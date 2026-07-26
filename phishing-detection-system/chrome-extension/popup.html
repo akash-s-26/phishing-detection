@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>PhishGuard AI</title>
+  <link rel="stylesheet" href="popup.css"/>
+</head>
+<body>
+<div class="popup" id="popupRoot">
+
+  <header class="header">
+    <div class="header-brand">
+      <span class="header-hex" id="statusHex">⬡</span>
+      <div>
+        <span class="header-name">PhishGuard <span class="ai-text">AI</span></span>
+        <span class="header-sub">Auto-scanning every page</span>
+      </div>
+    </div>
+    <button class="rescan-btn" id="rescanBtn" title="Force re-scan">↺</button>
+  </header>
+
+  <!-- Scanning state -->
+  <div id="stateScan" class="state">
+    <div class="scan-anim">
+      <div class="scan-ring r1"></div>
+      <div class="scan-ring r2"></div>
+      <div class="scan-ring r3"></div>
+      <span class="scan-hex">⬡</span>
+    </div>
+    <p class="scan-label">ANALYZING URL…</p>
+    <p class="scan-sub" id="scanningUrl"></p>
+  </div>
+
+  <!-- Error / backend offline state -->
+  <div id="stateError" class="state hidden">
+    <div class="error-icon">⚡</div>
+    <p class="error-title">Backend Offline</p>
+    <p class="error-msg">Start Flask server to enable scanning:</p>
+    <code class="error-code">cd backend &amp;&amp; python app.py</code>
+    <button class="retry-btn" id="retryBtn">↺ Retry</button>
+  </div>
+
+  <!-- Result state -->
+  <div id="stateResult" class="state hidden">
+
+    <div class="status-banner" id="statusBanner">
+      <span class="status-icon" id="statusIcon">?</span>
+      <div class="status-text">
+        <div class="status-label" id="statusLabel">CHECKING…</div>
+        <div class="status-url" id="statusUrl"></div>
+      </div>
+    </div>
+
+    <div class="meter-row">
+      <div class="meter-wrap">
+        <svg class="meter-svg" viewBox="0 0 96 96" id="meterSvg">
+          <circle cx="48" cy="48" r="38" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+          <circle cx="48" cy="48" r="38" fill="none" stroke="#00ff88" stroke-width="8"
+            stroke-dasharray="238.76" stroke-dashoffset="238.76"
+            stroke-linecap="round" transform="rotate(-90 48 48)"
+            id="meterArc"
+            style="transition:stroke-dashoffset 1s ease,stroke .5s ease;filter:drop-shadow(0 0 8px #00ff88)"/>
+          <text x="48" y="44" text-anchor="middle" fill="#00ff88" font-size="17" font-weight="700"
+            font-family="monospace" id="meterScore">0%</text>
+          <text x="48" y="57" text-anchor="middle" fill="rgba(255,255,255,0.3)" font-size="5.5"
+            font-family="monospace" letter-spacing="1">RISK</text>
+        </svg>
+      </div>
+      <div class="meter-stats">
+        <div class="stat-row">
+          <span class="stat-name">Confidence</span>
+          <div class="stat-bar-outer"><div class="stat-bar-inner" id="confBar"></div></div>
+          <span class="stat-val" id="confVal">--%</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-name">Engine</span>
+          <span class="stat-badge" id="methodBadge">ML</span>
+        </div>
+        <div class="stat-row" id="cachedRow" style="display:none">
+          <span class="stat-name">Cache</span>
+          <span class="stat-badge cached">HIT</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="signals-section">
+      <div class="signals-header">
+        <span class="signals-title">DETECTION SIGNALS</span>
+        <span class="signals-count" id="signalsCount">0</span>
+      </div>
+      <div class="signals-list" id="signalsList"></div>
+    </div>
+
+    <div class="actions" id="phishingActions" style="display:none">
+      <button class="btn-leave" id="btnLeave">🚫 Leave Website</button>
+      <button class="btn-continue" id="btnContinue">Continue Anyway</button>
+    </div>
+
+    <div class="footer-row">
+      <button class="link-btn" id="btnReport">⚑ False Positive</button>
+      <a class="link-btn" href="http://localhost:3000" target="_blank">Dashboard ↗</a>
+    </div>
+
+  </div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
