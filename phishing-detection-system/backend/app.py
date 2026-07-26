@@ -1,7 +1,8 @@
 """
 backend/app.py
-Flask REST API — loads model.pkl + scaler.pkl, exposes 6 endpoints.
-This is what the Chrome extension and dashboard both talk to.
+Flask REST API — loads model.pkl + scaler.pkl, exposes prediction, history,
+analytics, auth, and bulk-scan endpoints. Consumed by the PhishShield React
+frontend, the Chrome extension, and the dashboard.
 """
 
 import os
@@ -12,15 +13,29 @@ import datetime
 import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
+
+from auth import auth_bp, init_auth, register_blocklist_check
+from enrichment import enrich
 
 ML_DIR = os.path.join(os.path.dirname(__file__), '..', 'machine-learning')
 sys.path.insert(0, ML_DIR)
 from feature_extraction import extract_features, features_to_vector, get_detection_signals
+from trusted_domains import is_trusted_domain
 
 app = Flask(__name__)
-CORS(app, origins='*')  # extension + dashboard both need cross-origin access
+CORS(app, origins='*', supports_credentials=True)
+
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'change-this-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=30)
+
+jwt = JWTManager(app)
+register_blocklist_check(jwt)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'phishing_history.db')
+init_auth(DB_PATH)
+app.register_blueprint(auth_bp)
 
 # ─── Load ML artifacts once at startup (not per-request) ─────────────────────
 
@@ -49,6 +64,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute('''CREATE TABLE IF NOT EXISTS scan_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
         url TEXT, prediction TEXT, risk_score REAL,
         confidence REAL, scanned_at TEXT)''')
     conn.commit()
@@ -57,11 +73,20 @@ def init_db():
 init_db()
 
 
-def save_scan(url, prediction, risk_score, confidence):
+def _optional_user_id():
+    """Scans work whether logged in or not; attach a user_id when a valid token is present."""
+    try:
+        verify_jwt_in_request(optional=True)
+        return get_jwt_identity()
+    except Exception:
+        return None
+
+
+def save_scan(url, prediction, risk_score, confidence, user_id=None):
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        'INSERT INTO scan_history (url,prediction,risk_score,confidence,scanned_at) VALUES (?,?,?,?,?)',
-        (url, prediction, risk_score, confidence, datetime.datetime.utcnow().isoformat())
+        'INSERT INTO scan_history (user_id,url,prediction,risk_score,confidence,scanned_at) VALUES (?,?,?,?,?,?)',
+        (user_id, url, prediction, risk_score, confidence, datetime.datetime.utcnow().isoformat())
     )
     conn.commit()
     conn.close()
@@ -70,6 +95,28 @@ def save_scan(url, prediction, risk_score, confidence):
 
 def ml_predict(url: str) -> dict:
     features = extract_features(url)
+
+    # Trusted-provider short-circuit: structurally complex but entirely
+    # legitimate URLs (Google/Microsoft/Apple OAuth sign-in flows, GitHub,
+    # etc.) can score as high-risk on pure structural features alone
+    # (length, special-char count, query-param count). Rather than let a
+    # long, real accounts.google.com sign-in URL get flagged as phishing,
+    # verify the domain against a small trusted allowlist first.
+    if is_trusted_domain(url):
+        return {
+            'prediction': 'safe',
+            'risk_score': 2.0,
+            'confidence': 99.0,
+            'features': features,
+            'signals': [{
+                'signal': 'Trusted Provider Domain',
+                'severity': 'safe',
+                'description': 'This domain belongs to a verified, well-known provider — structural URL complexity (common in OAuth/SSO login flows) is expected and not treated as risk.'
+            }],
+            'model_comparison': {},
+            'method': 'trusted-allowlist'
+        }
+
     signals = get_detection_signals(features)
 
     if model is None or scaler is None:
@@ -127,7 +174,8 @@ def health():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """Main endpoint — the extension calls this on every page navigation."""
+    """Main endpoint — scan a single URL. Enriches the ML verdict with
+    SSL, WHOIS/domain-age, redirect-chain, and blacklist checks."""
     data = request.get_json(silent=True)
     if not data or 'url' not in data:
         return jsonify({'error': 'Missing "url" field in request body'}), 400
@@ -138,9 +186,13 @@ def predict():
 
     try:
         result = ml_predict(url)
+        extra = enrich(url, result['features'], result['signals'], result['prediction'], result['risk_score'])
+        result.update(extra)
         result['url'] = url
         result['scanned_at'] = datetime.datetime.utcnow().isoformat()
-        save_scan(url, result['prediction'], result['risk_score'], result['confidence'])
+
+        user_id = _optional_user_id()
+        save_scan(url, result['prediction'], result['risk_score'], result['confidence'], user_id)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -148,29 +200,125 @@ def predict():
 
 @app.route('/history', methods=['GET'])
 def history():
-    limit = request.args.get('limit', 20, type=int)
+    """Scan history. Filterable by result, date range, and a URL keyword search.
+    If a valid JWT is provided, results are scoped to that user; otherwise global."""
+    limit = request.args.get('limit', 50, type=int)
+    result_filter = request.args.get('result')
+    search = request.args.get('search')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    user_id = _optional_user_id()
+
+    query = 'SELECT id,url,prediction,risk_score,confidence,scanned_at FROM scan_history WHERE 1=1'
+    params = []
+    if user_id:
+        query += ' AND user_id = ?'
+        params.append(user_id)
+    if result_filter:
+        query += ' AND prediction = ?'
+        params.append(result_filter)
+    if search:
+        query += ' AND url LIKE ?'
+        params.append(f'%{search}%')
+    if date_from:
+        query += ' AND scanned_at >= ?'
+        params.append(date_from)
+    if date_to:
+        query += ' AND scanned_at <= ?'
+        params.append(date_to)
+    query += ' ORDER BY id DESC LIMIT ?'
+    params.append(limit)
+
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        'SELECT url,prediction,risk_score,confidence,scanned_at FROM scan_history ORDER BY id DESC LIMIT ?',
-        (limit,)
-    ).fetchall()
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([
-        {'url': r[0], 'prediction': r[1], 'risk_score': r[2], 'confidence': r[3], 'scanned_at': r[4]}
+        {'id': r[0], 'url': r[1], 'prediction': r[2], 'risk_score': r[3], 'confidence': r[4], 'scanned_at': r[5]}
         for r in rows
     ])
 
 
 @app.route('/statistics', methods=['GET'])
 def statistics():
+    user_id = _optional_user_id()
     conn = sqlite3.connect(DB_PATH)
-    total = conn.execute('SELECT COUNT(*) FROM scan_history').fetchone()[0]
-    phishing = conn.execute("SELECT COUNT(*) FROM scan_history WHERE prediction='phishing'").fetchone()[0]
-    suspicious = conn.execute("SELECT COUNT(*) FROM scan_history WHERE prediction='suspicious'").fetchone()[0]
+    base = 'FROM scan_history WHERE 1=1'
+    params = []
+    if user_id:
+        base += ' AND user_id = ?'
+        params.append(user_id)
+
+    total = conn.execute(f'SELECT COUNT(*) {base}', params).fetchone()[0]
+    phishing = conn.execute(f"SELECT COUNT(*) {base} AND prediction='phishing'", params).fetchone()[0]
+    suspicious = conn.execute(f"SELECT COUNT(*) {base} AND prediction='suspicious'", params).fetchone()[0]
     conn.close()
     return jsonify({
         'total': total, 'phishing': phishing,
         'suspicious': suspicious, 'safe': total - phishing - suspicious
+    })
+
+
+@app.route('/analytics', methods=['GET'])
+def analytics():
+    """Daily/weekly trends + threat distribution for the Analytics page."""
+    user_id = _optional_user_id()
+    conn = sqlite3.connect(DB_PATH)
+    base = 'FROM scan_history WHERE 1=1'
+    params = []
+    if user_id:
+        base += ' AND user_id = ?'
+        params.append(user_id)
+
+    rows = conn.execute(
+        f'SELECT prediction, scanned_at {base} ORDER BY scanned_at ASC', params
+    ).fetchall()
+    conn.close()
+
+    daily = {}
+    for prediction, scanned_at in rows:
+        day = scanned_at[:10]
+        daily.setdefault(day, {'date': day, 'safe': 0, 'suspicious': 0, 'phishing': 0})
+        daily[day][prediction] = daily[day].get(prediction, 0) + 1
+
+    daily_series = list(daily.values())[-30:]
+
+    total = len(rows)
+    phishing_count = sum(1 for p, _ in rows if p == 'phishing')
+    suspicious_count = sum(1 for p, _ in rows if p == 'suspicious')
+    safe_count = total - phishing_count - suspicious_count
+
+    weekly = {}
+    for prediction, scanned_at in rows:
+        try:
+            dt = datetime.datetime.fromisoformat(scanned_at)
+            week_key = f'{dt.isocalendar()[0]}-W{dt.isocalendar()[1]:02d}'
+        except Exception:
+            continue
+        weekly.setdefault(week_key, 0)
+        weekly[week_key] += 1
+    weekly_series = [{'week': k, 'scans': v} for k, v in sorted(weekly.items())][-12:]
+
+    detection_accuracy = None
+    metrics_path = os.path.join(ML_DIR, 'model_metrics.json')
+    if os.path.exists(metrics_path):
+        import json
+        with open(metrics_path) as f:
+            metrics = json.load(f)
+        best_model_name = metrics.get('best_model')
+        for entry in metrics.get('results', []):
+            if entry.get('model') == best_model_name:
+                detection_accuracy = entry.get('accuracy')
+                break
+        if detection_accuracy is None and metrics.get('results'):
+            detection_accuracy = metrics['results'][0].get('accuracy')
+
+    return jsonify({
+        'daily_scans': daily_series,
+        'weekly_scans': weekly_series,
+        'detection_accuracy': detection_accuracy,
+        'threat_distribution': {'safe': safe_count, 'suspicious': suspicious_count, 'phishing': phishing_count},
+        'safe_vs_phishing_ratio': round(safe_count / phishing_count, 2) if phishing_count else None,
+        'total_scans': total,
     })
 
 
@@ -200,5 +348,5 @@ def report_false_positive():
 
 
 if __name__ == '__main__':
-    print("[INFO] Starting Phishing Detection API on port 5000...")
+    print("[INFO] Starting PhishShield API on port 5000...")
     app.run(host='0.0.0.0', port=5000, debug=True)

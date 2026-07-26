@@ -105,7 +105,7 @@ def get_detection_signals(f: dict) -> list:
             'severity': 'high',
             'description': 'Double slash in the path suggests a URL redirection trick.'
         })
-    if f.get('url_length', 0) > 75:
+    if f.get('url_length', 0) > 150:
         signals.append({
             'signal': 'Excessively Long URL',
             'severity': 'medium',
