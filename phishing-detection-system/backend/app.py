@@ -24,7 +24,7 @@ from feature_extraction import extract_features, features_to_vector, get_detecti
 from trusted_domains import is_trusted_domain
 
 app = Flask(__name__)
-CORS(app, origins='*', supports_credentials=True)
+CORS(app, origins='*')
 
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'change-this-in-production')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)
@@ -67,6 +67,12 @@ def init_db():
         user_id INTEGER,
         url TEXT, prediction TEXT, risk_score REAL,
         confidence REAL, scanned_at TEXT)''')
+    # Migrate pre-existing databases that were created before the user_id
+    # column was added. CREATE TABLE IF NOT EXISTS won't alter an existing
+    # table, so add the column explicitly when it's missing.
+    cols = [r[1] for r in conn.execute('PRAGMA table_info(scan_history)').fetchall()]
+    if cols and 'user_id' not in cols:
+        conn.execute('ALTER TABLE scan_history ADD COLUMN user_id INTEGER')
     conn.commit()
     conn.close()
 

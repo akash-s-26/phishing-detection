@@ -13,6 +13,7 @@ import ssl
 import socket
 import datetime
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -22,7 +23,23 @@ except ImportError:
     whois_lib = None
 
 REQUEST_TIMEOUT = 4
+WHOIS_TIMEOUT = 4
 KNOWN_BLACKLISTED_TLDS = {'.tk', '.ml', '.ga', '.cf', '.gq'}
+
+# python-whois has no built-in timeout and can block for minutes against a
+# slow or unreachable WHOIS server, which would hang every /predict request.
+# Run lookups on a worker thread and enforce WHOIS_TIMEOUT as a hard bound.
+_whois_pool = ThreadPoolExecutor(max_workers=2)
+
+
+def _run_whois(host: str):
+    """Run whois_lib.whois(host) on a worker thread, bounded by WHOIS_TIMEOUT.
+    Returns the Whois object on success, or None on timeout/error."""
+    future = _whois_pool.submit(whois_lib.whois, host)
+    try:
+        return future.result(timeout=WHOIS_TIMEOUT)
+    except Exception:
+        return None
 
 
 def _hostname(url: str) -> str:
@@ -53,7 +70,9 @@ def check_domain_age(url: str) -> dict:
     if not host or whois_lib is None:
         return {'label': 'Unknown', 'days': None}
     try:
-        w = whois_lib.whois(host)
+        w = _run_whois(host)
+        if w is None:
+            return {'label': 'Unknown', 'days': None}
         created = w.creation_date
         if isinstance(created, list):
             created = created[0]
@@ -78,7 +97,9 @@ def check_whois_info(url: str) -> dict:
     if not host or whois_lib is None:
         return {'registrar': 'Unknown', 'country': 'Unknown'}
     try:
-        w = whois_lib.whois(host)
+        w = _run_whois(host)
+        if w is None:
+            return {'registrar': 'Unknown', 'country': 'Unknown'}
         registrar = w.registrar or 'Unknown'
         country = w.country or 'Unknown'
         return {'registrar': str(registrar), 'country': str(country)}
@@ -146,11 +167,20 @@ def build_explanation(prediction: str, risk_score: float, signals: list,
 
 
 def enrich(url: str, features: dict, signals: list, prediction: str, risk_score: float) -> dict:
-    """Run all enrichment checks and assemble the extra fields the frontend needs."""
-    ssl_info = check_ssl(url)
-    domain_age = check_domain_age(url)
-    whois_info = check_whois_info(url)
-    redirects = check_redirects(url)
+    """Run all enrichment checks and assemble the extra fields the frontend needs.
+    Network-bound checks (SSL, WHOIS x2, redirects) run in parallel so the total
+    time is bounded by the slowest single check rather than their sum."""
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        ssl_f = pool.submit(check_ssl, url)
+        age_f = pool.submit(check_domain_age, url)
+        whois_f = pool.submit(check_whois_info, url)
+        redirect_f = pool.submit(check_redirects, url)
+
+        ssl_info = ssl_f.result()
+        domain_age = age_f.result()
+        whois_info = whois_f.result()
+        redirects = redirect_f.result()
+
     blacklisted = check_blacklist(url, features)
     reason = build_explanation(prediction, risk_score, signals, domain_age, ssl_info, redirects, blacklisted)
 
