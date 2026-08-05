@@ -150,6 +150,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // content.js pulls the latest scan for its own tab on load (self-init),
+  // so the overlay/banner/toast appears reliably even if the SCAN_COMPLETE
+  // push was sent before the content script was injected.
+  if (msg.type === 'GET_SCAN_FOR_TAB') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId) {
+      chrome.storage.local.get(`scan_${tabId}`, (data) => {
+        sendResponse(data[`scan_${tabId}`] || null);
+      });
+    } else {
+      sendResponse(null);
+    }
+    return true;
+  }
+
   // popup.js or content.js requests a forced fresh scan (Re-Scan button)
   if (msg.type === 'SCAN_URL') {
     scanCache.delete(msg.url);

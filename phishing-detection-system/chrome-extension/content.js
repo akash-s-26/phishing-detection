@@ -18,12 +18,38 @@
   if (window.__phishguardLoaded) return; // avoid double injection
   window.__phishguardLoaded = true;
 
-  let overlayActive = false;
+let overlayActive = false;
 
+  // Listen for the SCAN_COMPLETE push from background.js so the overlay /
+  // banner / toast appears in real time once /predict returns.
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'SCAN_COMPLETE') handleResult(msg.result, msg.url);
     sendResponse({ ok: true });
   });
+
+  // ─── Self-init: pull the latest scan result for this tab ───────────────────
+  // background.js pushes SCAN_COMPLETE after /predict returns, but if the scan
+  // finishes before this content script is injected (slow page / fast scan, or
+  // a missed message), the overlay/banner/toast is never shown. Pull the stored
+  // result on load so the popup reliably appears whenever a page is opened.
+  function requestScanIfNeeded(attempt) {
+    chrome.runtime.sendMessage({ type: 'GET_SCAN_FOR_TAB' }, (resp) => {
+      if (chrome.runtime.lastError) return;
+      if (resp && resp.result) {
+        handleResult(resp.result, resp.url);
+        return;
+      }
+      // No stored result yet. On the first attempt, background.js may still be
+      // mid-scan (onCompleted -> /predict in flight), so wait and re-check
+      // before forcing a fresh scan to avoid duplicate /predict calls.
+      if (attempt < 2) {
+        setTimeout(() => requestScanIfNeeded(attempt + 1), 2000);
+      } else {
+        chrome.runtime.sendMessage({ type: 'SCAN_URL', url: window.location.href }, () => {});
+      }
+    });
+  }
+  requestScanIfNeeded(0);
 
   function handleResult(result, url) {
     if (!result) return;
