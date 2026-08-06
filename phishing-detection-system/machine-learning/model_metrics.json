@@ -3,69 +3,69 @@
   "results": [
     {
       "model": "Random Forest",
-      "accuracy": 1.0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1_score": 1.0,
+      "accuracy": 0.9972,
+      "precision": 0.9998,
+      "recall": 0.9936,
+      "f1_score": 0.9967,
       "confusion_matrix": [
         [
-          6,
-          0
+          26966,
+          4
         ],
         [
-          0,
-          6
+          128,
+          19976
         ]
       ]
     },
     {
       "model": "Logistic Regression",
-      "accuracy": 1.0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1_score": 1.0,
+      "accuracy": 0.9539,
+      "precision": 0.9779,
+      "recall": 0.9128,
+      "f1_score": 0.9442,
       "confusion_matrix": [
         [
-          6,
-          0
+          26555,
+          415
         ],
         [
-          0,
-          6
+          1753,
+          18351
         ]
       ]
     },
     {
       "model": "Decision Tree",
-      "accuracy": 1.0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1_score": 1.0,
+      "accuracy": 0.9952,
+      "precision": 0.9997,
+      "recall": 0.9891,
+      "f1_score": 0.9944,
       "confusion_matrix": [
         [
-          6,
-          0
+          26965,
+          5
         ],
         [
-          0,
-          6
+          219,
+          19885
         ]
       ]
     },
     {
       "model": "SVM",
-      "accuracy": 1.0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1_score": 1.0,
+      "accuracy": 0.9667,
+      "precision": 0.9786,
+      "recall": 0.9426,
+      "f1_score": 0.9602,
       "confusion_matrix": [
         [
-          6,
-          0
+          26555,
+          415
         ],
         [
-          0,
-          6
+          1154,
+          18950
         ]
       ]
     }

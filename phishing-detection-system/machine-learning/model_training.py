@@ -10,7 +10,8 @@ import json
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score,
     f1_score, confusion_matrix, classification_report
@@ -21,8 +22,8 @@ from preprocessing import preprocess
 
 def train_random_forest(X_train, y_train):
     m = RandomForestClassifier(
-        n_estimators=100, max_depth=10,
-        min_samples_split=5, min_samples_leaf=2,
+        n_estimators=200, max_depth=20,
+        min_samples_split=2, min_samples_leaf=1,
         random_state=42, n_jobs=-1
     )
     m.fit(X_train, y_train)
@@ -30,22 +31,25 @@ def train_random_forest(X_train, y_train):
 
 
 def train_logistic_regression(X_train, y_train):
-    m = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
+    m = LogisticRegression(C=1.0, max_iter=2000, random_state=42)
     m.fit(X_train, y_train)
     return m
 
 
 def train_decision_tree(X_train, y_train):
     m = DecisionTreeClassifier(
-        max_depth=8, min_samples_split=5,
-        min_samples_leaf=2, random_state=42
+        max_depth=12, min_samples_split=2,
+        min_samples_leaf=1, random_state=42
     )
     m.fit(X_train, y_train)
     return m
 
 
 def train_svm(X_train, y_train):
-    m = SVC(kernel='rbf', C=1.0, gamma='scale', probability=True, random_state=42)
+    # Calibrated LinearSVC provides fast, scalable linear SVM training on 200k+
+    # samples while providing calibrated predict_proba output required by the backend API.
+    base_svc = LinearSVC(C=1.0, max_iter=2000, random_state=42, dual='auto')
+    m = CalibratedClassifierCV(estimator=base_svc)
     m.fit(X_train, y_train)
     return m
 
