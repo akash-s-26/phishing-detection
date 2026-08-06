@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldHalf } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { ScanForm } from '@/components/ScanForm';
 import { ResultCard } from '@/components/ResultCard';
@@ -23,9 +23,10 @@ export default function Home() {
     try {
       const data = await scanUrl(url);
       setResult(data);
-      if (data.prediction === 'phishing') toast.error('Phishing detected.');
-      else if (data.prediction === 'suspicious') toast.warning('This URL looks suspicious.');
-      else toast.success('This URL looks safe.');
+      const pred = (data.prediction || 'safe').toLowerCase();
+      if (pred === 'phishing') toast.error('Phishing Threat Detected!');
+      else if (pred === 'suspicious' || pred === 'medium') toast.warning('Suspicious URL Indicators Detected');
+      else toast.success('URL Analyzed Clean — Site is Safe');
     } catch (err) {
       setError(getApiErrorMessage(err));
       setResult(null);
@@ -35,31 +36,38 @@ export default function Home() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-5xl px-6 py-12 space-y-10">
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="mb-8 flex flex-col items-center gap-3 text-center"
+        className="flex flex-col items-center gap-4 text-center"
       >
-        <ShieldHalf className="h-10 w-10 text-brand-soft" />
-        <h1 className="font-hand text-4xl underline-scribble">Scan a URL</h1>
-        <p className="max-w-lg text-sm text-slate-400">
-          Paste any link — PhishShield checks it against a trained ML model, live SSL and WHOIS
-          data, and known blacklist patterns, then explains exactly why.
+        <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-1.5 text-xs font-semibold text-cyan-400">
+          <Sparkles className="h-3.5 w-3.5" /> Real-Time Machine Learning Security Engine
+        </div>
+
+        <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+          Instant <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Phishing & Risk</span> Analysis
+        </h1>
+
+        <p className="max-w-xl text-sm leading-relaxed text-slate-400">
+          Paste any website link to run real-time 15-feature machine learning classification across Random Forest, Decision Tree, SVM, and Logistic Regression models.
         </p>
       </motion.div>
 
-      <ScanForm onScan={handleScan} isLoading={isLoading} />
+      <div className="card-panel p-4 sm:p-6 bg-[#111827] border-white/10 shadow-2xl">
+        <ScanForm onScan={handleScan} isLoading={isLoading} />
+      </div>
 
-      <div className="mt-8">
+      <div className="pt-4">
         {isLoading && (
-          <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
-            <Skeleton className="h-[260px] w-[260px] shrink-0" />
+          <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+            <Skeleton className="h-[280px] w-full rounded-2xl" />
             <div className="flex flex-col gap-4">
-              <Skeleton className="h-20" />
-              <Skeleton className="h-24" />
-              <Skeleton className="h-32" />
+              <Skeleton className="h-24 w-full rounded-2xl" />
+              <Skeleton className="h-28 w-full rounded-2xl" />
+              <Skeleton className="h-36 w-full rounded-2xl" />
             </div>
           </div>
         )}

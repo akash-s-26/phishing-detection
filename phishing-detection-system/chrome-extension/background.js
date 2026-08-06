@@ -10,7 +10,7 @@
  * so the in-page overlay/banner/toast appears with no manual click.
  */
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = 'http://127.0.0.1:5000';
 const scanCache = new Map(); // url -> last /predict response, avoids duplicate calls
 
 // ─── Auto-scan on page load ──────────────────────────────────────────────────
@@ -41,6 +41,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 async function runScan(tabId, url) {
   console.log(`[PhishGuard] Scanning tab ${tabId}: ${url}`);
 
+  const key = `scan_${tabId}`;
+  const stored = await chrome.storage.local.get(key);
+  if (stored[key] && stored[key].url !== url) {
+    await chrome.storage.local.remove(key);
+  }
+
   let result;
   try {
     result = await callPredictAPI(url);
@@ -53,7 +59,8 @@ async function runScan(tabId, url) {
     return;
   }
 
-  await updateBadge(tabId, result.prediction);
+  const predLower = (result.prediction || 'safe').toLowerCase();
+  await updateBadge(tabId, predLower);
 
   await chrome.storage.local.set({
     [`scan_${tabId}`]: { url, result, timestamp: Date.now() }
@@ -61,7 +68,7 @@ async function runScan(tabId, url) {
 
   await pushToContentScript(tabId, url, result);
 
-  if (result.prediction === 'phishing') {
+  if (predLower === 'phishing') {
     showNotification(tabId, url, result.risk_score);
   }
 }

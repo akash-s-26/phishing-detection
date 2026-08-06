@@ -1,96 +1,87 @@
 """
 dataset/build_dataset.py
-Combines PhishTank + Majestic URLs or processes PhiUSIIL dataset, extracts features, saves CSV.
+Builds a balanced 50/50 phishing detection dataset (100,000 unique records)
+from PhiUSIIL, PhishTank, and Majestic sources with zero label bias.
 """
-import pandas as pd, sys, os, argparse
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'machine-learning'))
-from feature_extraction import extract_features
+
+import os
+import sys
+import pandas as pd
+import numpy as np
 from tqdm import tqdm
 
-def build_from_phiusiil(csv_path, output_path):
-    print(f"Loading PhiUSIIL dataset from {csv_path}...")
-    df = pd.read_csv(csv_path, usecols=['URL', 'label'])
-    print(f"Loaded {len(df)} rows. Raw label distribution:\n{df['label'].value_counts()}")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'machine-learning'))
+from feature_extraction import extract_features, FEATURE_COLS
+
+
+def build_balanced(output_path: str, max_per_class: int = 50000):
+    base_dir = os.path.dirname(__file__)
+    phi_path = os.path.join(base_dir, 'PhiUSIIL_Phishing_URL_Dataset.csv')
+    pt_path = os.path.join(base_dir, 'phishtank_raw.csv')
+    maj_path = os.path.join(base_dir, 'majestic_raw.csv')
+
+    legit_urls = set()
+    phish_urls = set()
+
+    # 1. PhiUSIIL (label 1 = Legit, label 0 = Phishing in raw PhiUSIIL)
+    if os.path.exists(phi_path):
+        print(f"Reading PhiUSIIL from {phi_path}...")
+        df_phi = pd.read_csv(phi_path, usecols=['URL', 'label'])
+        for _, r in df_phi.iterrows():
+            u = str(r['URL']).strip()
+            if not u or not u.startswith(('http://', 'https://')):
+                continue
+            if r['label'] == 1:
+                legit_urls.add(u)
+            else:
+                phish_urls.add(u)
+
+    # 2. Majestic 1M (Legit)
+    if os.path.exists(maj_path):
+        print(f"Reading Majestic from {maj_path}...")
+        df_maj = pd.read_csv(maj_path, usecols=['Domain'], nrows=60000)
+        for d in df_maj['Domain'].dropna():
+            u = 'https://' + str(d).strip()
+            legit_urls.add(u)
+
+    # 3. PhishTank (Phish)
+    if os.path.exists(pt_path):
+        print(f"Reading PhishTank from {pt_path}...")
+        df_pt = pd.read_csv(pt_path, usecols=['url'])
+        for u in df_pt['url'].dropna():
+            u_str = str(u).strip()
+            if u_str.startswith(('http://', 'https://')):
+                phish_urls.add(u_str)
+
+    legit_list = list(legit_urls)[:max_per_class]
+    phish_list = list(phish_urls)[:max_per_class]
+
+    print(f"Collected {len(legit_list)} unique Legitimate URLs and {len(phish_list)} unique Phishing URLs.")
 
     rows = []
-    for idx, row in tqdm(df.iterrows(), total=len(df), desc='Extracting features'):
-        url = str(row['URL']).strip()
-        if not url:
-            continue
-        try:
-            f = extract_features(url)
-            f['url'] = url
-            # Invert PhiUSIIL label: PhiUSIIL has 0=Phishing, 1=Legit.
-            # Our system uses 1=Phishing, 0=Legit.
-            f['label'] = 1 - int(row['label'])
-            rows.append(f)
-        except Exception:
-            continue
+    print("Extracting features for Legitimate URLs...")
+    for u in tqdm(legit_list):
+        f = extract_features(u)
+        f['url'] = u
+        f['label'] = 0  # 0 = Legitimate
+        rows.append(f)
+
+    print("Extracting features for Phishing URLs...")
+    for u in tqdm(phish_list):
+        f = extract_features(u)
+        f['url'] = u
+        f['label'] = 1  # 1 = Phishing
+        rows.append(f)
 
     out_df = pd.DataFrame(rows)
-    out_df = out_df.drop_duplicates(subset=['url'] + list(out_df.columns.difference(['url'])))
+    out_df = out_df.drop_duplicates(subset=['url'])
     out_df = out_df.sample(frac=1, random_state=42).reset_index(drop=True)
+
     out_df.to_csv(output_path, index=False)
-    print(f"\nSaved {len(out_df)} rows to {output_path}")
-    print(f"Final label distribution (0=Legit, 1=Phishing):\n{out_df['label'].value_counts()}")
-    return out_df
+    print(f"\nSuccessfully saved {len(out_df)} rows to {output_path}")
+    print(f"Final Class Distribution:\n{out_df['label'].value_counts()}")
 
-def build(max_phish=65000, max_legit=65000):
-    rows = []
-
-    # Phishing URLs — label 1
-    phish = pd.read_csv('phishtank_raw.csv', usecols=['url'])
-    phish_urls = phish['url'].dropna().unique()
-    phish_urls = [str(u).strip() for u in phish_urls if str(u).strip()]
-    # Keep only plausible http(s) URLs
-    phish_urls = [u for u in phish_urls if u.startswith(('http://', 'https://'))]
-    phish_urls = phish_urls[:max_phish]
-    print(f"Phishing: {len(phish_urls)} URLs")
-    for url in tqdm(phish_urls, desc='Phishing'):
-        try:
-            f = extract_features(url)
-            f['url'] = url; f['label'] = 1
-            rows.append(f)
-        except Exception:
-            continue
-
-    # Legitimate URLs — label 0
-    legit = pd.read_csv('majestic_raw.csv', usecols=['Domain'])
-    legit_urls = ('https://' + legit['Domain']).dropna().unique()
-    legit_urls = [str(u).strip() for u in legit_urls if str(u).strip()]
-    legit_urls = [u for u in legit_urls if u.startswith(('http://', 'https://'))]
-    # Balance: same number of legit as phishing
-    legit_urls = legit_urls[:len(phish_urls)][:max_legit]
-    print(f"Legitimate: {len(legit_urls)} URLs")
-    for url in tqdm(legit_urls, desc='Legitimate'):
-        try:
-            f = extract_features(url)
-            f['url'] = url; f['label'] = 0
-            rows.append(f)
-        except Exception:
-            continue
-
-    df = pd.DataFrame(rows)
-    df = df.drop_duplicates(subset=['url'] + list(df.columns.difference(['url'])))
-    # Keep balanced classes
-    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-    df.to_csv('phishing_dataset.csv', index=False)
-    print(f"\nSaved {len(df)} rows")
-    print(df['label'].value_counts())
 
 if __name__ == '__main__':
-    base_dir = os.path.dirname(__file__)
-    default_phiusiil = os.path.join(base_dir, 'PhiUSIIL_Phishing_URL_Dataset.csv')
-    default_output = os.path.join(base_dir, 'phishing_dataset.csv')
-
-    p = argparse.ArgumentParser(description='Build expanded phishing dataset')
-    p.add_argument('--phiusiil', type=str, default=default_phiusiil, help='Path to PhiUSIIL CSV dataset')
-    p.add_argument('--output', type=str, default=default_output, help='Output path for processed dataset')
-    p.add_argument('--max-phish', type=int, default=65000)
-    p.add_argument('--max-legit', type=int, default=65000)
-    args = p.parse_args()
-
-    if os.path.exists(args.phiusiil):
-        build_from_phiusiil(args.phiusiil, args.output)
-    else:
-        build(args.max_phish, args.max_legit)
+    out_file = os.path.join(os.path.dirname(__file__), 'phishing_dataset.csv')
+    build_balanced(out_file, max_per_class=50000)

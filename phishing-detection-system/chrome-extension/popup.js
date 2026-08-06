@@ -7,7 +7,7 @@
  * scan through background.js, which itself calls POST /predict.
  */
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = 'http://127.0.0.1:5000';
 const CIRCUM = 2 * Math.PI * 38; // matches SVG r=38
 
 const $ = id => document.getElementById(id);
@@ -29,9 +29,9 @@ const phishActions = $('phishingActions');
 const scanningUrl = $('scanningUrl');
 
 const STATUS = {
-  safe: { label: '✓  SAFE', icon: '✓', color: '#00ff88', theme: 'safe-theme', bar: '#00ff88' },
-  suspicious: { label: '⚠  SUSPICIOUS', icon: '⚠', color: '#ffb800', theme: 'suspect-theme', bar: '#ffb800' },
-  phishing: { label: '✕  PHISHING DETECTED', icon: '✕', color: '#ff3366', theme: 'phish-theme', bar: '#ff3366' },
+  safe: { label: '✓ SAFE WEBSITE', icon: '🛡️', color: '#00ff88', theme: 'safe-theme', bar: '#00ff88' },
+  suspicious: { label: '⚠️ SUSPICIOUS SITE', icon: '⚠️', color: '#ffb800', theme: 'suspect-theme', bar: '#ffb800' },
+  phishing: { label: '🚨 PHISHING DETECTED', icon: '🚨', color: '#ff3366', theme: 'phish-theme', bar: '#ff3366' },
 };
 const SEV_COLORS = { safe: '#00ff88', low: '#88ccff', medium: '#ffb800', high: '#ff7700', critical: '#ff3366' };
 
@@ -43,11 +43,11 @@ async function init() {
   const tab = tabs[0];
 
   if (!tab || !tab.url || !tab.url.startsWith('http')) {
-    showError('Cannot scan this page (internal Chrome page).');
+    showError('Cannot scan internal extension or system browser pages.');
     return;
   }
 
-  scanningUrl.textContent = truncate(tab.url, 44);
+  scanningUrl.textContent = truncate(tab.url, 48);
 
   const stored = await getStoredScan(tab.id);
   if (stored && stored.url === tab.url && stored.result) {
@@ -87,7 +87,7 @@ async function directScan(url, tabId) {
     const data = await res.json();
     renderResult(data, url, false);
   } catch (err) {
-    showError('Backend offline. Run: python app.py');
+    showError('Backend server offline. Please start Python Flask service.');
   }
 }
 
@@ -105,7 +105,7 @@ function renderResult(result, url, fromCache) {
   statusIcon.style.color = cfg.color;
   statusLabel.textContent = cfg.label;
   statusLabel.style.color = cfg.color;
-  statusUrl.textContent = truncate(url, 46);
+  statusUrl.textContent = truncate(url, 48);
 
   const offset = CIRCUM - (risk / 100) * CIRCUM;
   meterArc.style.strokeDashoffset = offset;
@@ -122,24 +122,38 @@ function renderResult(result, url, fromCache) {
 
   methodBadge.textContent = (result.method || 'ml').toUpperCase();
   if (fromCache) cachedRow.style.display = 'flex';
+  else cachedRow.style.display = 'none';
 
   renderSignals(result.signals || []);
-  if (prediction === 'phishing') phishActions.style.display = 'flex';
+  if (prediction === 'phishing' || prediction === 'suspicious') {
+    phishActions.style.display = 'flex';
+  } else {
+    phishActions.style.display = 'none';
+  }
 
   showState('result');
 }
 
 function renderSignals(signals) {
-  signalsCount.textContent = signals.length;
+  signalsCount.textContent = signals ? signals.length : 0;
   signalsList.innerHTML = '';
+
+  if (!signals || signals.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'signals-empty';
+    empty.innerHTML = `<span>✓</span><span>No suspicious indicators detected for this URL.</span>`;
+    signalsList.appendChild(empty);
+    return;
+  }
+
   signals.forEach((s, i) => {
     const color = SEV_COLORS[s.severity] || '#888';
     const el = document.createElement('div');
-    el.className = `signal-item ${s.severity}`;
-    el.style.animationDelay = `${i * 0.06}s`;
+    el.className = `signal-item ${s.severity || 'low'}`;
+    el.style.animationDelay = `${i * 0.05}s`;
     el.innerHTML = `
-      <div class="sig-dot" style="background:${color};box-shadow:0 0 5px ${color}"></div>
-      <div>
+      <div class="sig-dot" style="background:${color};box-shadow:0 0 6px ${color}"></div>
+      <div style="flex:1; min-width:0;">
         <div class="sig-name">${esc(s.signal)}</div>
         <div class="sig-desc">${esc(s.description)}</div>
       </div>`;

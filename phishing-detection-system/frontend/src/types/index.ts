@@ -20,7 +20,9 @@ export interface ScanResult {
   url: string;
   prediction: Verdict;
   risk_score: number;
+  risk_level?: string;
   confidence: number;
+  inference_time_ms?: number;
   ssl: boolean;
   domain_age: string;
   redirects: number;

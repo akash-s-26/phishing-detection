@@ -19,26 +19,32 @@ export function formatDate(iso: string): string {
 }
 
 export function verdictColor(verdict: string): string {
-  switch (verdict) {
+  const v = (verdict || '').toLowerCase();
+  switch (v) {
     case 'safe':
-      return 'text-safe border-safe/40 bg-safe/10';
+      return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
     case 'suspicious':
-      return 'text-warn border-warn/40 bg-warn/10';
+    case 'medium':
+      return 'text-amber-400 border-amber-500/30 bg-amber-500/10';
     case 'phishing':
-      return 'text-danger border-danger/40 bg-danger/10';
+    case 'high':
+      return 'text-rose-400 border-rose-500/30 bg-rose-500/10';
     default:
-      return 'text-slate-400 border-slate-500/40 bg-slate-500/10';
+      return 'text-slate-400 border-slate-500/30 bg-slate-500/10';
   }
 }
 
 export function verdictHex(verdict: string): string {
-  switch (verdict) {
+  const v = (verdict || '').toLowerCase();
+  switch (v) {
     case 'safe':
-      return '#3ecf8e';
+      return '#10b981';
     case 'suspicious':
-      return '#f5a623';
+    case 'medium':
+      return '#f59e0b';
     case 'phishing':
-      return '#ff5470';
+    case 'high':
+      return '#f43f5e';
     default:
       return '#94a3b8';
   }

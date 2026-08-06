@@ -26,8 +26,13 @@ TRUSTED_ROOT_DOMAINS = {
     'apple.com', 'icloud.com',
     'github.com', 'githubusercontent.com',
     'amazon.com', 'paypal.com',
-    'facebook.com', 'fb.com',
+    'facebook.com', 'fb.com', 'instagram.com',
     'yahoo.com',
+    'claude.ai', 'anthropic.com',
+    'openai.com', 'chatgpt.com', 'ollama.com', 'huggingface.co',
+    'stackoverflow.com', 'wikipedia.org',
+    'twitter.com', 'x.com', 'linkedin.com', 'youtube.com', 'reddit.com',
+    'notion.so', 'notion.site', 'figma.com', 'slack.com', 'discord.com', 'zoom.us'
 }
 
 
