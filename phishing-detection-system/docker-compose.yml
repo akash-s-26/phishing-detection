@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  phishguard-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: phishguard-backend-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - ENVIRONMENT=production
+      - JWT_SECRET_KEY=phishguard-secure-prod-key-2026
+      - ALLOWED_ORIGINS=https://phishing-detection-ai.netlify.app,https://*.netlify.app
+    volumes:
+      - phishguard-db-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  phishguard-db-data:
+    driver: local

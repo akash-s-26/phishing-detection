@@ -13,8 +13,8 @@ const CONFIG = {
   },
   PROD: {
     API_BASE_URL: 'https://phishguard-api.up.railway.app',
-    FRONTEND_DASHBOARD_URL: 'https://phishguard-ai.netlify.app/dashboard',
-    ALLOWED_FRONTEND_PATTERNS: ['https://*.netlify.app/*']
+    FRONTEND_DASHBOARD_URL: 'https://phishing-detection-ai.netlify.app/dashboard',
+    ALLOWED_FRONTEND_PATTERNS: ['https://phishing-detection-ai.netlify.app/*', 'https://*.netlify.app/*']
   }
 };
 
