@@ -1,0 +1,9 @@
+{
+  "total_candidates_generated": 10000,
+  "discriminator_threshold": 0.5,
+  "accepted_synthetic_samples": 5807,
+  "rejected_synthetic_samples": 4193,
+  "acceptance_rate": 0.5807,
+  "original_train_samples": 70000,
+  "augmented_train_samples": 75807
+}

@@ -1,0 +1,85 @@
+{
+  "test_sample_count": 15000,
+  "results": [
+    {
+      "model": "BiLSTM RNN (Baseline)",
+      "accuracy": 0.9955,
+      "precision": 0.9995,
+      "recall": 0.9916,
+      "f1_score": 0.9955,
+      "roc_auc": 0.999,
+      "false_positive_rate": 0.0005,
+      "false_negative_rate": 0.0084,
+      "confusion_matrix": [
+        [
+          7496,
+          4
+        ],
+        [
+          63,
+          7437
+        ]
+      ]
+    },
+    {
+      "model": "BiLSTM RNN (with GAN)",
+      "accuracy": 0.9951,
+      "precision": 0.9999,
+      "recall": 0.9903,
+      "f1_score": 0.995,
+      "roc_auc": 0.9989,
+      "false_positive_rate": 0.0001,
+      "false_negative_rate": 0.0097,
+      "confusion_matrix": [
+        [
+          7499,
+          1
+        ],
+        [
+          73,
+          7427
+        ]
+      ]
+    },
+    {
+      "model": "1D CNN Classifier",
+      "accuracy": 0.9964,
+      "precision": 0.9992,
+      "recall": 0.9936,
+      "f1_score": 0.9964,
+      "roc_auc": 0.9992,
+      "false_positive_rate": 0.0008,
+      "false_negative_rate": 0.0064,
+      "confusion_matrix": [
+        [
+          7494,
+          6
+        ],
+        [
+          48,
+          7452
+        ]
+      ]
+    },
+    {
+      "model": "Deep Learning Ensemble",
+      "accuracy": 0.9958,
+      "precision": 0.9997,
+      "recall": 0.9919,
+      "f1_score": 0.9958,
+      "roc_auc": 0.9992,
+      "false_positive_rate": 0.0003,
+      "false_negative_rate": 0.0081,
+      "confusion_matrix": [
+        [
+          7498,
+          2
+        ],
+        [
+          61,
+          7439
+        ]
+      ]
+    }
+  ]
+}

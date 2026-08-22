@@ -1,109 +1,124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PhishGuard AI</title>
-  <link rel="stylesheet" href="popup.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhishGuard AI Dashboard</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-<div class="popup" id="popupRoot">
-
-  <header class="header">
-    <div class="header-brand">
-      <span class="header-hex" id="statusHex">⬡</span>
-      <div>
-        <span class="header-name">PhishGuard <span class="ai-text">AI</span></span>
-        <span class="header-sub">Auto-scanning active tab</span>
-      </div>
-    </div>
-    <button class="rescan-btn" id="rescanBtn" title="Force re-scan">↺</button>
-  </header>
-
-  <!-- Scanning state -->
-  <div id="stateScan" class="state">
-    <div class="scan-anim">
-      <div class="scan-ring r1"></div>
-      <div class="scan-ring r2"></div>
-      <div class="scan-ring r3"></div>
-      <span class="scan-hex">⬡</span>
-    </div>
-    <p class="scan-label">ANALYZING URL…</p>
-    <p class="scan-sub" id="scanningUrl"></p>
-  </div>
-
-  <!-- Error / backend offline state -->
-  <div id="stateError" class="state hidden">
-    <div class="error-icon">⚡</div>
-    <p class="error-title">Backend Offline</p>
-    <p class="error-msg">Start Flask server to enable scanning:</p>
-    <code class="error-code">python app.py</code>
-    <button class="retry-btn" id="retryBtn">↺ Retry Scan</button>
-  </div>
-
-  <!-- Result state -->
-  <div id="stateResult" class="state hidden">
-
-    <div class="status-banner" id="statusBanner">
-      <span class="status-icon" id="statusIcon">🛡️</span>
-      <div class="status-text">
-        <div class="status-label" id="statusLabel">CHECKING…</div>
-        <div class="status-url" id="statusUrl"></div>
-      </div>
-    </div>
-
-    <div class="meter-row">
-      <div class="meter-wrap">
-        <svg class="meter-svg" viewBox="0 0 96 96" id="meterSvg">
-          <circle cx="48" cy="48" r="38" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="7"/>
-          <circle cx="48" cy="48" r="38" fill="none" stroke="#00ff88" stroke-width="7"
-            stroke-dasharray="238.76" stroke-dashoffset="238.76"
-            stroke-linecap="round" transform="rotate(-90 48 48)"
-            id="meterArc"
-            style="transition:stroke-dashoffset 0.8s ease, stroke 0.4s ease; filter:drop-shadow(0 0 8px #00ff88)"/>
-          <text x="48" y="44" text-anchor="middle" fill="#00ff88" font-size="16" font-weight="700"
-            font-family="monospace" id="meterScore">0%</text>
-          <text x="48" y="58" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="6"
-            font-family="monospace" letter-spacing="1.5">RISK</text>
-        </svg>
-      </div>
-      <div class="meter-stats">
-        <div class="stat-row">
-          <span class="stat-name">Confidence</span>
-          <div class="stat-bar-outer"><div class="stat-bar-inner" id="confBar"></div></div>
-          <span class="stat-val" id="confVal">--%</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-name">Engine</span>
-          <span class="stat-badge" id="methodBadge">ML</span>
-        </div>
-        <div class="stat-row" id="cachedRow" style="display:none">
-          <span class="stat-name">Cache</span>
-          <span class="stat-badge cached">HIT</span>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="shield-icon"><img src="icons/icon32.png" class="brand-img-icon" alt="PhishGuard AI Logo"></div>
+        <div>
+          <h1 class="brand-title">PhishGuard AI</h1>
+          <span class="brand-sub">Deep Learning Security</span>
         </div>
       </div>
-    </div>
-
-    <div class="signals-section">
-      <div class="signals-header">
-        <span class="signals-title">DETECTION SIGNALS</span>
-        <span class="signals-count" id="signalsCount">0</span>
+      <div class="status-pill active" id="header-status-pill">
+        <span class="dot"></span>
+        <span id="status-text">ACTIVE DL</span>
       </div>
-      <div class="signals-list" id="signalsList"></div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="overview">Overview</button>
+      <button class="nav-tab" data-tab="history">History</button>
+      <button class="nav-tab" data-tab="diagnostics">Diagnostics</button>
+    </nav>
+
+    <!-- TAB 1: OVERVIEW -->
+    <div class="tab-content active" id="tab-overview">
+      <!-- Current Website Card -->
+      <div class="card url-card">
+        <span class="card-label">CURRENT WEBSITE</span>
+        <div class="url-display" id="current-url">Loading domain...</div>
+      </div>
+
+      <!-- Verdict Banner -->
+      <div class="card verdict-card safe" id="verdict-card">
+        <div class="gauge-container">
+          <svg class="gauge-svg" viewBox="0 0 100 100">
+            <circle class="gauge-bg" cx="50" cy="50" r="42"></circle>
+            <circle class="gauge-fill" id="gauge-fill" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="264"></circle>
+          </svg>
+          <div class="gauge-text">
+            <span class="gauge-score" id="risk-score-val">0</span>
+            <span class="gauge-label">RISK</span>
+          </div>
+        </div>
+
+        <div class="verdict-info">
+          <div class="verdict-badge" id="verdict-badge">SAFE</div>
+          <div class="threat-level" id="threat-level-text">THREAT LEVEL: LOW</div>
+          <div class="confidence-text" id="confidence-text">Confidence: 99.0%</div>
+        </div>
+      </div>
+
+      <!-- Deep Learning Analysis Breakdown -->
+      <div class="card dl-breakdown-card">
+        <span class="card-label">DEEP LEARNING MODEL BREAKDOWN</span>
+        <div class="dl-grid">
+          <div class="dl-item">
+            <span class="dl-name">BiLSTM RNN</span>
+            <span class="dl-val" id="rnn-score">--</span>
+          </div>
+          <div class="dl-item">
+            <span class="dl-name">1D CNN</span>
+            <span class="dl-val" id="cnn-score">--</span>
+          </div>
+          <div class="dl-item">
+            <span class="dl-name">GAN Augmentation</span>
+            <span class="dl-val active-tag">ENABLED</span>
+          </div>
+          <div class="dl-item">
+            <span class="dl-name">DL Fusion Ensemble</span>
+            <span class="dl-val" id="ensemble-score">--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signals List -->
+      <div class="card signals-card">
+        <span class="card-label">DETECTION SIGNALS</span>
+        <div class="signals-container" id="signals-list">
+          <div class="signal-row safe">
+            <span>🟢</span>
+            <span>No phishing indicators detected.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions-group">
+        <button class="btn btn-primary" id="btn-rescan">Re-Scan URL</button>
+        <button class="btn btn-secondary" id="btn-dashboard">Open Dashboard</button>
+      </div>
     </div>
 
-    <div class="actions" id="phishingActions" style="display:none">
-      <button class="btn-leave" id="btnLeave">🚫 Leave Website</button>
-      <button class="btn-continue" id="btnContinue">Continue Anyway</button>
+    <!-- TAB 2: HISTORY -->
+    <div class="tab-content" id="tab-history">
+      <div class="card history-card">
+        <span class="card-label">RECENT SCAN HISTORY</span>
+        <div class="history-list" id="history-list">
+          <div class="empty-state">No recent scans recorded.</div>
+        </div>
+      </div>
     </div>
 
-    <div class="footer-row">
-      <button class="link-btn" id="btnReport">⚑ Report False Positive</button>
-      <a class="link-btn" href="http://localhost:5174" target="_blank" rel="noopener">Dashboard ↗</a>
+    <!-- TAB 3: DIAGNOSTICS -->
+    <div class="tab-content" id="tab-diagnostics">
+      <div class="card diag-card">
+        <span class="card-label">DEVELOPER DIAGNOSTICS</span>
+        <pre class="diag-code" id="diag-output">Loading system diagnostics...</pre>
+      </div>
     </div>
 
   </div>
-</div>
-<script src="popup.js"></script>
+  <script src="normalizer.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

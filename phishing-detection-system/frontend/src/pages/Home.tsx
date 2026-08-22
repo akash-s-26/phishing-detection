@@ -44,7 +44,7 @@ export default function Home() {
         className="flex flex-col items-center gap-4 text-center"
       >
         <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-1.5 text-xs font-semibold text-cyan-400">
-          <Sparkles className="h-3.5 w-3.5" /> Real-Time Machine Learning Security Engine
+          <Sparkles className="h-3.5 w-3.5" /> PyTorch Deep Learning Security Engine
         </div>
 
         <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
@@ -52,7 +52,7 @@ export default function Home() {
         </h1>
 
         <p className="max-w-xl text-sm leading-relaxed text-slate-400">
-          Paste any website link to run real-time 15-feature machine learning classification across Random Forest, Decision Tree, SVM, and Logistic Regression models.
+          Paste any website link to run real-time PyTorch Deep Learning classification across BiLSTM RNN, 1D CNN, and GAN Data Augmentation models.
         </p>
       </motion.div>
 

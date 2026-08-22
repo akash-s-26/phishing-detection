@@ -1,58 +1,52 @@
 {
   "manifest_version": 3,
-  "name": "PhishGuard AI — Phishing Detector",
-  "version": "1.0.0",
-  "description": "Real-time ML-powered phishing detection. Auto-scans every website you visit using a Flask + Scikit-learn backend.",
-
-  "permissions": [
-    "activeTab",
-    "tabs",
-    "storage",
-    "notifications",
-    "scripting",
-    "webNavigation"
-  ],
-
-  "host_permissions": [
-    "http://localhost:5000/*",
-    "http://127.0.0.1:5000/*",
-    "<all_urls>"
-  ],
-
-  "background": {
-    "service_worker": "background.js"
-  },
-
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    },
-    "default_title": "PhishGuard AI"
-  },
-
-  "content_scripts": [
-    {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
-
+  "name": "PhishGuard AI — Deep Learning Phishing Detector",
+  "version": "2.0.0",
+  "description": "Real-time AI phishing protection powered by PyTorch BiLSTM RNN, 1D CNN, and GAN Data Augmentation.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-
-  "web_accessible_resources": [
-    {
-      "resources": ["icons/*"],
-      "matches": ["<all_urls>"]
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PhishGuard AI Dashboard",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
-  ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://localhost:5000/*",
+    "http://127.0.0.1:5000/*",
+    "https://*.netlify.app/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:5173/*",
+      "http://127.0.0.1:5173/*",
+      "https://*.netlify.app/*"
+    ]
+  }
 }

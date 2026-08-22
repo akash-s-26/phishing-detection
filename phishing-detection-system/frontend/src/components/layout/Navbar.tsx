@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Shield, LogOut, Activity, LayoutDashboard, History, BarChart3 } from 'lucide-react';
+import { LogOut, Activity, LayoutDashboard, History, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useExtensionStatus } from '@/hooks/useExtensionStatus';
 import { cn } from '@/utils/cn';
 
 const LINKS = [
@@ -13,6 +14,7 @@ const LINKS = [
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { isConnected, version } = useExtensionStatus();
   const navigate = useNavigate();
 
   async function handleLogout() {
@@ -26,9 +28,9 @@ export function Navbar() {
         <NavLink to="/" className="flex items-center gap-3 group">
           <motion.div
             whileHover={{ scale: 1.05 }}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_15px_rgba(56,189,248,0.15)] group-hover:border-cyan-400/50"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 shadow-[0_0_15px_rgba(56,189,248,0.15)] group-hover:border-cyan-400/50 p-1 overflow-hidden"
           >
-            <Shield className="h-5 w-5" />
+            <img src="/icon.png" alt="PhishGuard AI Logo" className="h-full w-full object-contain" />
           </motion.div>
           <div>
             <span className="font-bold text-lg tracking-wide text-white flex items-center gap-1.5">
@@ -62,6 +64,19 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-3">
+          {/* Extension Status Badge */}
+          <div
+            title={isConnected ? `Extension Connected (v${version || '2.0.0'})` : 'Extension Not Detected - Load Unpacked Extension in Chrome'}
+            className={cn(
+              'hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all',
+              isConnected
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+            )}
+          >
+            <ShieldCheck className={cn("h-3.5 w-3.5", isConnected && "animate-pulse")} />
+            <span>{isConnected ? `Extension Active v${version || '2.0.0'}` : 'Extension Standby'}</span>
+          </div>
           {isAuthenticated ? (
             <div className="flex items-center gap-3">
               <NavLink

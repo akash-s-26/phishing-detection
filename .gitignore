@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Node dependencies & build output
+node_modules/
+dist/
+build/
+
+# Environment local files
+.env.local
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

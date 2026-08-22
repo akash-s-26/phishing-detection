@@ -145,6 +145,27 @@ def features_to_vector(f: dict) -> list:
     return [float(f.get(k, 0.0)) for k in FEATURE_COLS]
 
 
+def features_to_normalized_vector(f: dict) -> list:
+    """Normalize 15 URL features into bounded [0.0, 1.0] range to prevent linear gradient saturation."""
+    return [
+        min(float(f.get('url_length', 0)) / 200.0, 1.0),
+        float(f.get('has_https', 0)),
+        min(float(f.get('num_subdomains', 0)) / 5.0, 1.0),
+        float(f.get('has_ip_address', 0)),
+        min(float(f.get('num_special_chars', 0)) / 20.0, 1.0),
+        float(f.get('has_at_symbol', 0)),
+        float(f.get('has_double_slash', 0)),
+        min(float(f.get('num_dots', 0)) / 10.0, 1.0),
+        min(float(f.get('url_depth', 0)) / 10.0, 1.0),
+        float(f.get('suspicious_tld', 0)),
+        min(float(f.get('domain_length', 0)) / 50.0, 1.0),
+        float(f.get('has_hyphen_domain', 0)),
+        min(float(f.get('brand_keyword_count', 0)) / 5.0, 1.0),
+        float(f.get('digit_ratio_domain', 0.0)),
+        min(float(f.get('num_query_params', 0)) / 10.0, 1.0)
+    ]
+
+
 def get_detection_signals(f: dict) -> list:
     """
     Turn raw features into human-readable signals for the UI.

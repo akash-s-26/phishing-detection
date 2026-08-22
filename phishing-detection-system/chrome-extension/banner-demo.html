@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhishGuard AI — Floating Security Banner Test Harness</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --border: #334155;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #020617;
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      font-size: 28px;
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 24px;
+      flex: 1;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 14px;
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .control-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .state-badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+    .state-badge.safe { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .state-badge.suspicious { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .state-badge.dangerous { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    
+    .btn-test {
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+    .btn-safe { background: #10b981; color: #ffffff; }
+    .btn-safe:hover { background: #059669; transform: translateY(-1px); }
+    .btn-suspicious { background: #f59e0b; color: #ffffff; }
+    .btn-suspicious:hover { background: #d97706; transform: translateY(-1px); }
+    .btn-dangerous { background: #ef4444; color: #ffffff; }
+    .btn-dangerous:hover { background: #dc2626; transform: translateY(-1px); }
+
+    .input-box {
+      width: 100%;
+      background: #090d16;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .log-card {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .log-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .log-box {
+      font-family: monospace;
+      font-size: 12px;
+      color: #38bdf8;
+      height: 180px;
+      overflow-y: auto;
+      background: #090d16;
+      padding: 12px;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+
+    /* Mock webpage element underneath to demonstrate non-blocking overlay */
+    .mock-webpage {
+      background: #ffffff;
+      color: #1e293b;
+      border-radius: 16px;
+      padding: 32px;
+      margin-top: 32px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .mock-webpage h2 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="brand-icon">🛡️</span>
+      <div>
+        <div class="brand-title">PhishGuard AI</div>
+        <div class="brand-subtitle">Bottom-Right Security Toast Test Harness</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="hero">
+      <h1>Floating Security Banner Verification</h1>
+      <p>Test the full URL Scan → Prediction → Background Event Dispatch → Content Script Listener → Bottom-Right Toast rendering flow directly in your browser.</p>
+    </div>
+
+    <div class="controls-grid">
+      <!-- SAFE STATE -->
+      <div class="control-card">
+        <div class="card-header">
+          <span>🟢</span>
+          <span class="state-badge safe">SAFE STATE</span>
+        </div>
+        <div>
+          <strong>Website Safe (98% Safe)</strong>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Verifies green shield icon, safe message, domain label, and 5s auto-dismiss.</p>
+        </div>
+        <button class="btn-test btn-safe" id="btn-trigger-safe">
+          <span>🛡️ Trigger Safe Banner</span>
+        </button>
+      </div>
+
+      <!-- SUSPICIOUS STATE -->
+      <div class="control-card">
+        <div class="card-header">
+          <span>🟡</span>
+          <span class="state-badge suspicious">SUSPICIOUS STATE</span>
+        </div>
+        <div>
+          <strong>Suspicious Website (45% Risk)</strong>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Verifies amber warning icon, potential threat title, and details drawer.</p>
+        </div>
+        <button class="btn-test btn-suspicious" id="btn-trigger-suspicious">
+          <span>⚠️ Trigger Suspicious Banner</span>
+        </button>
+      </div>
+
+      <!-- DANGEROUS STATE -->
+      <div class="control-card">
+        <div class="card-header">
+          <span>🔴</span>
+          <span class="state-badge dangerous">DANGEROUS STATE</span>
+        </div>
+        <div>
+          <strong>Phishing Threat (94% Threat)</strong>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">Verifies crimson red alert icon, danger title, and high risk indicators.</p>
+        </div>
+        <button class="btn-test btn-dangerous" id="btn-trigger-dangerous">
+          <span>🚨 Trigger Dangerous Banner</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- CUSTOM URL DISPATCH -->
+    <div class="control-card" style="margin-bottom: 32px;">
+      <div class="card-header">
+        <span>⚡</span>
+        <strong style="font-size: 14px;">Simulate Custom Scan Event Dispatch</strong>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <input type="text" class="input-box" id="custom-url-input" value="https://login.paypal-security-alert.com/signin">
+        <button class="btn-test btn-dangerous" id="btn-trigger-custom" style="white-space: nowrap;">
+          Simulate Scan Complete Event
+        </button>
+      </div>
+    </div>
+
+    <!-- LIVE CONSOLE LOG DISPLAY -->
+    <div class="log-card">
+      <div class="log-title">Live Chrome Extension Event Log</div>
+      <div class="log-box" id="event-log-output">
+        [PhishGuard Test Harness Initialized]<br>
+        Ready to simulate background scan messaging and content script rendering...<br>
+      </div>
+    </div>
+
+    <!-- MOCK WEBPAGE -->
+    <div class="mock-webpage">
+      <h2>Host Webpage Content Area</h2>
+      <p>This mock section demonstrates how the PhishGuard AI bottom-right security notification banner floats cleanly over any website without altering page layout or pushing down document elements.</p>
+      <p>Notice that the banner is positioned at <code>bottom: 20px; right: 20px;</code> with <code>z-index: 2147483647</code>.</p>
+    </div>
+  </div>
+
+  <script src="normalizer.js"></script>
+  <script src="content.js"></script>
+  <script src="banner-demo.js"></script>
+</body>
+</html>

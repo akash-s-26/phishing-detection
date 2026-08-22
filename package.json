@@ -1,0 +1,11 @@
+{
+  "name": "phishguard-ai-root",
+  "version": "2.0.0",
+  "description": "PhishGuard AI Root Orchestrator",
+  "private": true,
+  "scripts": {
+    "dev:all": "python phishing-detection-system/scripts/dev_all.py",
+    "build:extension": "python phishing-detection-system/scripts/package_extension.py",
+    "package:extension": "python phishing-detection-system/scripts/package_extension.py"
+  }
+}

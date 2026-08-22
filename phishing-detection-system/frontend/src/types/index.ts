@@ -16,23 +16,48 @@ export interface WhoisInfo {
   country: string;
 }
 
+export interface DLAnalysis {
+  rnn_probability: number;
+  cnn_probability: number;
+  ensemble_probability: number;
+}
+
+export interface DLModelMetadata {
+  name: string;
+  version: string;
+  rnn_executed: boolean;
+  cnn_executed: boolean;
+  gan_executed: boolean;
+  rnn_probability: number;
+  cnn_probability: number;
+  ensemble_probability: number;
+  inference_time_ms: number;
+}
+
 export interface ScanResult {
+  scan_id?: string;
   url: string;
   prediction: Verdict;
   risk_score: number;
   risk_level?: string;
+  threat_level?: string;
   confidence: number;
   inference_time_ms?: number;
-  ssl: boolean;
-  domain_age: string;
-  redirects: number;
-  blacklisted: boolean;
-  whois: WhoisInfo;
-  reason: string;
+  ssl?: boolean;
+  domain_age?: string;
+  redirects?: number;
+  blacklisted?: boolean;
+  whois?: WhoisInfo;
+  reason?: string;
   signals: Signal[];
+  analysis?: DLAnalysis;
+  model?: DLModelMetadata | string;
+  cache?: string;
+  trusted_domain_bypass?: string;
   model_comparison?: Record<string, ModelComparisonEntry>;
-  scanned_at: string;
-  method: string;
+  scanned_at?: string;
+  timestamp?: string;
+  method?: string;
 }
 
 export interface HistoryEntry {

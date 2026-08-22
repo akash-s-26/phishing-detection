@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShieldHalf } from 'lucide-react';
+
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -37,7 +37,7 @@ export default function Signup() {
     <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-6">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <ShieldHalf className="h-8 w-8 text-brand-soft" />
+          <img src="/icon.png" alt="PhishGuard Logo" className="h-10 w-10 object-contain mb-1" />
           <h1 className="font-hand text-3xl underline-scribble">Create your account</h1>
           <p className="text-sm text-slate-400">Track scans, view history, and get analytics.</p>
         </div>

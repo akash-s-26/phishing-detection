@@ -1,0 +1,5 @@
+model,accuracy,precision,recall,f1_score,roc_auc,false_positive_rate,false_negative_rate
+BiLSTM RNN (Baseline),0.9955,0.9995,0.9916,0.9955,0.999,0.0005,0.0084
+BiLSTM RNN (with GAN),0.9951,0.9999,0.9903,0.995,0.9989,0.0001,0.0097
+1D CNN Classifier,0.9964,0.9992,0.9936,0.9964,0.9992,0.0008,0.0064
+Deep Learning Ensemble,0.9958,0.9997,0.9919,0.9958,0.9992,0.0003,0.0081

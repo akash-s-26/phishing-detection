@@ -25,8 +25,7 @@ export function ResultCard({ result }: { result: ScanResult }) {
     }
   }
 
-  const modelComparison = result.model_comparison || {};
-  const hasComparison = Object.keys(modelComparison).length > 0;
+
 
   return (
     <motion.div
@@ -88,7 +87,7 @@ export function ResultCard({ result }: { result: ScanResult }) {
             icon={<ArrowRightLeft className="h-4 w-4 text-slate-400" />}
             label="Redirect Chain"
             value={`${result.redirects || 0} redirects`}
-            tone={result.redirects >= 2 ? 'warn' : undefined}
+            tone={(result.redirects || 0) >= 2 ? 'warn' : undefined}
           />
           <InfoTile
             icon={<ShieldAlert className="h-4 w-4 text-slate-400" />}
@@ -98,27 +97,41 @@ export function ResultCard({ result }: { result: ScanResult }) {
           />
         </div>
 
-        {hasComparison && (
+        {result.analysis && (
           <Card className="border-white/10 bg-[#111827]">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-bold text-white">
-                <Cpu className="h-4 w-4 text-cyan-400" /> Multi-Model Ensemble Predictions
+                <Cpu className="h-4 w-4 text-cyan-400" /> Deep Learning Fusion Ensemble Predictions
               </div>
-              <span className="text-xs font-mono text-slate-400">4 Trained Classifiers</span>
+              <span className="text-xs font-mono text-slate-400">BiLSTM + 1D CNN + GAN</span>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {Object.entries(modelComparison).map(([mName, info]) => {
-                const isPhish = info.prediction.toLowerCase() === 'phishing';
-                return (
-                  <div key={mName} className="rounded-xl border border-white/5 bg-slate-900/60 p-3 space-y-1">
-                    <p className="text-[11px] font-medium capitalize text-slate-400">{mName.replace('_', ' ')}</p>
-                    <p className={`text-xs font-bold font-mono ${isPhish ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {info.prediction.toUpperCase()}
-                    </p>
-                    <p className="text-[10px] font-mono text-slate-500">{info.confidence}% conf</p>
-                  </div>
-                );
-              })}
+              <div className="rounded-xl border border-white/5 bg-slate-900/60 p-3 space-y-1">
+                <p className="text-[11px] font-medium capitalize text-slate-400">BiLSTM RNN</p>
+                <p className="text-xs font-bold font-mono text-cyan-400">
+                  {((result.analysis.rnn_probability || 0) * 100).toFixed(1)}%
+                </p>
+                <p className="text-[10px] font-mono text-slate-500">Sequence DL</p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-slate-900/60 p-3 space-y-1">
+                <p className="text-[11px] font-medium capitalize text-slate-400">1D CNN Model</p>
+                <p className="text-xs font-bold font-mono text-cyan-400">
+                  {((result.analysis.cnn_probability || 0) * 100).toFixed(1)}%
+                </p>
+                <p className="text-[10px] font-mono text-slate-500">n-Gram Conv</p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-slate-900/60 p-3 space-y-1">
+                <p className="text-[11px] font-medium capitalize text-slate-400">GAN Augment</p>
+                <p className="text-xs font-bold font-mono text-emerald-400">ACTIVE</p>
+                <p className="text-[10px] font-mono text-slate-500">+5.7k Quality Samples</p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-slate-900/60 p-3 space-y-1">
+                <p className="text-[11px] font-medium capitalize text-slate-400">Fusion Ensemble</p>
+                <p className="text-xs font-bold font-mono text-cyan-400">
+                  {((result.analysis.ensemble_probability || 0) * 100).toFixed(1)}%
+                </p>
+                <p className="text-[10px] font-mono text-slate-500">Weighted Fusion</p>
+              </div>
             </div>
           </Card>
         )}

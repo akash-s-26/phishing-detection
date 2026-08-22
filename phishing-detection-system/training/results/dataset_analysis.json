@@ -1,0 +1,14 @@
+{
+  "total_raw_samples": 100000,
+  "total_clean_samples": 100000,
+  "legitimate_samples": 50000,
+  "phishing_samples": 50000,
+  "class_balance_phishing_ratio": 0.5,
+  "url_length_stats": {
+    "min": 12,
+    "mean": 37.79796,
+    "median": 28.0,
+    "max": 5795,
+    "std": 43.4355244734798
+  }
+}
