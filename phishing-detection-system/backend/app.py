@@ -442,9 +442,10 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
 
 from flask import send_file
 
-@app.route('/health', methods=['GET'])
-@app.route('/api/health', methods=['GET'])
-@app.route('/api/v1/health', methods=['GET'])
+@app.route('/', methods=['GET', 'HEAD'])
+@app.route('/health', methods=['GET', 'HEAD'])
+@app.route('/api/health', methods=['GET', 'HEAD'])
+@app.route('/api/v1/health', methods=['GET', 'HEAD'])
 def health():
     return jsonify({
         'status': 'ok',
