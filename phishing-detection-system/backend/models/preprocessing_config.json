@@ -1,0 +1,11 @@
+{
+  "max_seq_len": 150,
+  "vocab_size": 93,
+  "num_samples": 100000,
+  "num_features": 15,
+  "split_ratios": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  }
+}

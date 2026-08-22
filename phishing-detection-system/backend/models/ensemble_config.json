@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0-DL-Pure",
+  "architecture": "Deep Learning Fusion Ensemble (BiLSTM RNN + 1D CNN + GAN Augmentation)",
+  "models": {
+    "rnn": {
+      "file": "rnn_model.pth",
+      "weight": 0.55,
+      "type": "BiLSTM"
+    },
+    "cnn": {
+      "file": "cnn_model.pth",
+      "weight": 0.45,
+      "type": "1D-CNN"
+    }
+  },
+  "risk_thresholds": {
+    "safe_max": 20.0,
+    "low_max": 50.0,
+    "suspicious_max": 70.0,
+    "high_phishing_min": 71.0
+  },
+  "gan_augmentation": {
+    "enabled": true,
+    "quality_threshold": 0.5,
+    "generator_file": "gan_generator.pth"
+  }
+}

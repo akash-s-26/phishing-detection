@@ -32,8 +32,14 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models'))
-ML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'machine-learning'))
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'models'))
+if not os.path.exists(MODELS_DIR) or not os.listdir(MODELS_DIR):
+    MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models'))
+
+ML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'machine-learning'))
+if not os.path.exists(ML_DIR):
+    ML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'machine-learning'))
+
 sys.path.insert(0, ML_DIR)
 
 from feature_extraction import extract_features, features_to_normalized_vector, get_detection_signals, normalize_url

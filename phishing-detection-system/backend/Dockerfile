@@ -12,9 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend code and ML models
+# Copy backend code, ML models, and feature extraction modules
 COPY . .
-COPY ../models /app/models
 
 EXPOSE 5000
 

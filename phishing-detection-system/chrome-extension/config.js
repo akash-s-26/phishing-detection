@@ -12,7 +12,7 @@ const CONFIG = {
     ALLOWED_FRONTEND_PATTERNS: ['*://localhost:5173/*', '*://127.0.0.1:5173/*']
   },
   PROD: {
-    API_BASE_URL: 'https://phishguard-api.up.railway.app',
+    API_BASE_URL: 'https://phishguard-api.onrender.com',
     FRONTEND_DASHBOARD_URL: 'https://phishing-detection-ai.netlify.app/dashboard',
     ALLOWED_FRONTEND_PATTERNS: ['https://phishing-detection-ai.netlify.app/*', 'https://*.netlify.app/*']
   }
