@@ -1,0 +1,30 @@
+{
+  "functions": [
+    {
+      "source": "phishing-detection-system/functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "phishing-detection-system/firestore.rules"
+  },
+  "hosting": {
+    "public": "phishing-detection-system/frontend/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
