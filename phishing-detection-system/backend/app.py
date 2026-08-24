@@ -238,25 +238,44 @@ def extract_domain_name(url_str: str) -> str:
     except Exception:
         return url_str
 
+from firebase_db import save_scan_firebase, init_firebase, fetch_history_firebase
+
 def save_scan(url, prediction, risk_score, confidence, user_id=None, source='Chrome Extension', reason=None, model_pred=None):
+    scanned_at_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    domain = extract_domain_name(url)
+    primary_reason = reason or f"Threat Score: {risk_score}% ({prediction})"
+    model_name = model_pred or 'DL-CNN-BiLSTM'
+    src_name = source or 'Chrome Extension'
+
+    # 1. Save to SQLite database
     try:
-        domain = extract_domain_name(url)
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
             '''INSERT INTO scan_history (user_id, url, domain, prediction, risk_score, confidence, reason, model_prediction, source, scanned_at)
                VALUES (?,?,?,?,?,?,?,?,?,?)''',
-            (
-                user_id, url, domain, prediction, risk_score, confidence,
-                reason or f"Threat Score: {risk_score}% ({prediction})",
-                model_pred or 'DL-CNN-BiLSTM',
-                source or 'Chrome Extension',
-                datetime.datetime.now(datetime.timezone.utc).isoformat()
-            )
+            (user_id, url, domain, prediction, risk_score, confidence, primary_reason, model_name, src_name, scanned_at_iso)
         )
         conn.commit()
         conn.close()
     except Exception as e:
-        logging.error(f"Error saving scan to database: {e}")
+        logging.error(f"Error saving scan to SQLite database: {e}")
+
+    # 2. Save to Firebase Cloud Firestore
+    try:
+        save_scan_firebase({
+            'url': url,
+            'domain': domain,
+            'prediction': prediction,
+            'risk_score': risk_score,
+            'confidence': confidence,
+            'reason': primary_reason,
+            'model_prediction': model_name,
+            'source': src_name,
+            'user_id': user_id,
+            'scanned_at': scanned_at_iso
+        })
+    except Exception as e:
+        logging.error(f"Error saving scan to Firebase: {e}")
 
 # ─── Deep Learning Real-Time Inference Engine ─────────────────────────────────
 
@@ -447,17 +466,33 @@ from flask import send_file
 @app.route('/api/health', methods=['GET', 'HEAD'])
 @app.route('/api/v1/health', methods=['GET', 'HEAD'])
 def health():
+    _, firebase_active = init_firebase()
     return jsonify({
         'status': 'ok',
+        'healthy': True,
         'pipeline': '100% Pure Deep Learning Phishing Engine',
         'model_version': MODEL_VERSION,
         'rnn_model_loaded': RNN_MODEL is not None,
         'cnn_model_loaded': CNN_MODEL is not None,
+        'firebase_connected': firebase_active,
+        'database_mode': 'Cloud Firestore + SQLite (Dual Persistence)' if firebase_active else 'SQLite Local Storage',
         'warmup_completed': True,
         'cache_enabled': False,
         'trusted_domain_bypass_enabled': False,
         'traditional_ml_in_production': False,
         'device': str(DEVICE),
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
+    })
+
+@app.route('/api/v1/firebase-status', methods=['GET'])
+def firebase_status():
+    db, active = init_firebase()
+    return jsonify({
+        'firebase_connected': active,
+        'firestore_active': active,
+        'project_id': os.environ.get('FIREBASE_PROJECT_ID', 'phishguard-ai'),
+        'service_account_configured': bool(os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON') or os.path.exists(os.path.join(os.path.dirname(__file__), 'firebase-service-account.json'))),
+        'storage_mode': 'Cloud Firestore Realtime Sync' if active else 'SQLite Persistence (Set FIREBASE_SERVICE_ACCOUNT_JSON to enable Firestore)',
         'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()
     })
 
