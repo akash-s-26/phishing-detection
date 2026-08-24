@@ -6,9 +6,16 @@
  * and executes 100% live PyTorch Deep Learning inference with zero whitelists or detection caches.
  */
 
-importScripts('normalizer.js');
+importScripts('config.js', 'normalizer.js');
 
-const API_BASE_URL = 'http://localhost:5000';
+function getPrimaryApiBaseUrl() {
+  if (self.PhishGuardConfig && self.PhishGuardConfig.API_BASE_URL) {
+    return self.PhishGuardConfig.API_BASE_URL;
+  }
+  return 'http://localhost:5000';
+}
+
+const FALLBACK_PRODUCTION_API_URL = 'https://phishing-detection-4lb0.onrender.com';
 
 // Per-tab Scan State Machine Map
 const scanStates = new Map(); // tabId -> scanState object
@@ -338,11 +345,31 @@ async function performScan(tabId, url, triggerSource = 'nav') {
 
   try {
     const apiStartTime = Date.now();
-    const response = await fetch(`${API_BASE_URL}/api/v1/detect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, scan_id: scanId, tab_id: tabId, timestamp: captureTime })
-    });
+    const primaryUrl = getPrimaryApiBaseUrl();
+    let response = null;
+
+    try {
+      response = await fetch(`${primaryUrl}/api/v1/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, scan_id: scanId, tab_id: tabId, timestamp: captureTime })
+      });
+    } catch (primaryErr) {
+      if (primaryUrl !== FALLBACK_PRODUCTION_API_URL) {
+        console.warn(`[PhishGuard] Primary API (${primaryUrl}) unreachable: ${primaryErr.message}. Retrying with live Render API (${FALLBACK_PRODUCTION_API_URL})...`);
+        try {
+          response = await fetch(`${FALLBACK_PRODUCTION_API_URL}/api/v1/detect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, scan_id: scanId, tab_id: tabId, timestamp: captureTime })
+          });
+        } catch (fallbackErr) {
+          throw new Error('Backend API unreachable. Please verify your internet connection or start the local server.');
+        }
+      } else {
+        throw primaryErr;
+      }
+    }
 
     const data = await response.json();
     const networkMs = Date.now() - apiStartTime;
