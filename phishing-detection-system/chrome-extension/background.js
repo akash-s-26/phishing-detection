@@ -166,11 +166,12 @@ async function getTabScanState(tabId, currentUrl) {
 
 // ── NAVIGATION DEDUPLICATION & WARNING INJECTION ───────────────────────────
 
-function isDuplicateNavigation(tabId, url) {
-  const key = `${tabId}_${url}`;
+function isDuplicateNavigation(tabId, url, navigationId = null) {
+  const norm = normalizeUrl(url);
+  const key = `${tabId}_${norm}_${navigationId || ''}`;
   const now = Date.now();
   const lastTime = recentNavigations[key];
-  if (lastTime && now - lastTime < 250) {
+  if (lastTime && (now - lastTime < 3000)) {
     return true;
   }
   recentNavigations[key] = now;
@@ -451,13 +452,13 @@ async function performScan(tabId, url, triggerSource = 'nav') {
       scan_id: scanId,
       url: url,
       verdict: 'ERROR',
-      prediction: 'SCAN UNAVAILABLE',
-      error: error.message
+      prediction: 'Detection Service Unavailable',
+      error: 'Unable to analyze this website. Detection service unavailable.'
     };
     const errResult = self.PhishGuardNormalizer ? self.PhishGuardNormalizer.normalizeScanResult(errData) : errData;
     errResult.status = 'ERROR';
     errResult.tabId = tabId;
-    errResult.error = error.message;
+    errResult.error = 'Unable to analyze this website. Detection service unavailable.';
 
     await setTabScanState(tabId, errResult);
     sendOrInjectResultBanner(tabId, errResult);

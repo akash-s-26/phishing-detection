@@ -304,9 +304,9 @@ function renderScanState(rawState) {
   // CASE 3: ERROR
   if (status === 'ERROR') {
     if (verdictCard) verdictCard.className = 'card verdict-card phishing';
-    if (verdictBadge) { verdictBadge.textContent = 'SCAN ERROR'; verdictBadge.style.color = '#ef4444'; }
+    if (verdictBadge) { verdictBadge.textContent = 'SERVICE UNAVAILABLE'; verdictBadge.style.color = '#ef4444'; }
     if (riskScoreVal) riskScoreVal.textContent = '!';
-    if (threatLevelText) threatLevelText.textContent = rawState.error || 'Scan Unavailable';
+    if (threatLevelText) threatLevelText.textContent = rawState.error || 'Unable to analyze this website. Detection service unavailable.';
     if (confidenceText) confidenceText.textContent = 'Confidence: --%';
     if (gaugeFill) { gaugeFill.style.stroke = '#ef4444'; gaugeFill.style.strokeDashoffset = 264; }
     return;

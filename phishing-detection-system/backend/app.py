@@ -43,7 +43,6 @@ if not os.path.exists(ML_DIR):
 sys.path.insert(0, ML_DIR)
 
 from feature_extraction import extract_features, features_to_normalized_vector, get_detection_signals, normalize_url
-from trusted_domains import is_trusted_domain
 
 MODEL_VERSION = 'RNN-GAN-DL-v2.0'
 MAX_SEQ_LEN = 150
@@ -379,20 +378,11 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
     else:
         raw_ensemble_prob = cnn_prob
 
-    # Verified Domain False-Positive Suppression
-    if is_trusted_domain(norm_url):
-        ensemble_prob = 0.05
-        signals = [{
-            'signal': 'Verified Genuine Domain',
-            'severity': 'safe',
-            'description': 'Verified genuine official domain — zero phishing risk.'
-        }]
+    threat_signals = [s for s in signals if s.get('severity') in ('medium', 'high', 'critical')]
+    if domain_prob < 0.10 and len(threat_signals) == 0:
+        ensemble_prob = float(0.85 * domain_prob + 0.15 * raw_ensemble_prob)
     else:
-        threat_signals = [s for s in signals if s.get('severity') in ('medium', 'high', 'critical')]
-        if domain_prob < 0.10 and len(threat_signals) == 0:
-            ensemble_prob = float(0.85 * domain_prob + 0.15 * raw_ensemble_prob)
-        else:
-            ensemble_prob = raw_ensemble_prob
+        ensemble_prob = raw_ensemble_prob
 
     risk_score = round(ensemble_prob * 100.0, 1)
 
@@ -507,6 +497,7 @@ def firebase_status():
     })
 
 @app.route('/predict', methods=['POST'])
+@app.route('/api/predict', methods=['POST'])
 @app.route('/api/scan', methods=['POST'])
 @app.route('/api/v1/detect', methods=['POST'])
 def predict():
