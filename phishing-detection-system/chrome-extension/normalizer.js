@@ -216,9 +216,10 @@
     const withProto = (trimmed.startsWith('http://') || trimmed.startsWith('https://')) ? trimmed : 'https://' + trimmed;
     try {
       const u = new URL(withProto);
-      return (u.origin + u.pathname).replace(/\/+$/, '');
+      const host = u.hostname.replace(/^www\./, '');
+      return (u.protocol + '//' + host + u.pathname).replace(/\/+$/, '');
     } catch (e) {
-      return trimmed.replace(/\/+$/, '');
+      return trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
     }
   }
 

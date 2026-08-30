@@ -708,6 +708,8 @@
     safeSendMessage({ action: 'GET_CURRENT_SCAN_STATE', url: location.href }, (state) => {
       if (state && state.status === 'SUCCESS') {
         renderSecurityUI(state);
+      } else {
+        safeSendMessage({ action: 'URL_CHANGED', url: location.href });
       }
     });
   }
