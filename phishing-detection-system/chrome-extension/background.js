@@ -369,7 +369,7 @@ async function performScan(tabId, url, triggerSource = 'nav') {
 
     // Strict Stale-Result Protection
     const currentState = activeScanState[tabId];
-    if (!currentState || currentState.scanId !== scanId || currentState.url !== url) {
+    if (!currentState || currentState.scanId !== scanId || normalizeUrl(currentState.url) !== normalizeUrl(url)) {
       console.warn(`[PhishGuard] STALE_RESULT_DISCARDED Outdated response for ${url} (ScanID: ${scanId}) ignored on Tab ${tabId}`);
       return;
     }
