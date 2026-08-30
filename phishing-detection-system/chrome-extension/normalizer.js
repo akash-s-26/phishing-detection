@@ -212,12 +212,43 @@
    */
   function normalizeUrlForComparison(url) {
     if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim().toLowerCase();
+    const withProto = (trimmed.startsWith('http://') || trimmed.startsWith('https://')) ? trimmed : 'https://' + trimmed;
     try {
-      const u = new URL(url.trim());
-      return (u.origin + u.pathname).toLowerCase().replace(/\/+$/, '');
+      const u = new URL(withProto);
+      return (u.origin + u.pathname).replace(/\/+$/, '');
     } catch (e) {
-      return url.trim().toLowerCase().replace(/\/+$/, '');
+      return trimmed.replace(/\/+$/, '');
     }
+  }
+
+  /**
+   * Resolves raw scan result data or risk score into 3-level security classification:
+   * 'SAFE' (Level 1) | 'SUSPICIOUS' (Level 2) | 'DANGEROUS' (Level 3)
+   */
+  function resolveSecurityLevel(data) {
+    if (!data) return 'SAFE';
+    const verdict = normalizeVerdict(data.verdict || data.prediction);
+    const score = normalizeRiskScore(data.riskScore ?? data.risk_score ?? data.risk);
+
+    if (verdict === 'PHISHING' || verdict === 'MALICIOUS' || (data.threatLevel && String(data.threatLevel).toUpperCase() === 'CRITICAL')) {
+      return 'DANGEROUS';
+    }
+    if (verdict === 'SUSPICIOUS') {
+      return 'SUSPICIOUS';
+    }
+    if (verdict === 'SAFE') {
+      return 'SAFE';
+    }
+
+    // Threshold Fallback (0-39% -> SAFE, 40-69% -> SUSPICIOUS, 70-100% -> DANGEROUS)
+    if (score !== null) {
+      if (score >= 70.0) return 'DANGEROUS';
+      if (score >= 40.0) return 'SUSPICIOUS';
+      return 'SAFE';
+    }
+
+    return 'SAFE';
   }
 
   return {
@@ -227,6 +258,7 @@
     normalizeConfidence: normalizeConfidence,
     normalizeVerdict: normalizeVerdict,
     normalizeScanResult: normalizeScanResult,
-    normalizeUrlForComparison: normalizeUrlForComparison
+    normalizeUrlForComparison: normalizeUrlForComparison,
+    resolveSecurityLevel: resolveSecurityLevel
   };
 }));

@@ -1,18 +1,21 @@
 /**
- * PhishGuard AI — Content Script (Shadow DOM Threat Overlay & Bottom-Right Result Banner)
- * Mounts an isolated, non-bypassable full-screen warning interstitial when a PHISHING threat is validated,
- * and renders a compact, non-blocking floating result banner in the bottom-right corner for SAFE, SUSPICIOUS, and DANGEROUS results.
+ * PhishGuard AI — Content Script (3-Level Security Warning & Notification System)
+ * Manages exactly ONE PhishGuard UI element on the page at any time:
+ * - Level 1 (SAFE): Bottom-Right floating banner (#phishguard-security-notification)
+ * - Level 2 (SUSPICIOUS): Bottom-Right floating banner (#phishguard-security-notification)
+ * - Level 3 (DANGEROUS): Full-screen security warning overlay (#phishguard-danger-overlay)
  */
 
 (function () {
-  let shadowHost = null;
-  let shadowRoot = null;
-  let currentScanId = null;
+  let notificationHost = null;
+  let notificationRoot = null;
+  let dangerOverlayHost = null;
+  let dangerOverlayRoot = null;
 
-  let bannerHost = null;
-  let bannerRoot = null;
-  let bannerDismissTimer = null;
-  let currentBannerScanId = null;
+  let activeScanId = null;
+  let activeScanUrl = null;
+  const bypassedScans = new Set();
+  const bypassedUrls = new Set();
 
   function safeGetURL(path) {
     try {
@@ -37,85 +40,126 @@
     } catch (e) {}
   }
 
-  function removeExistingOverlay() {
-    const existing = document.getElementById('phishguard-shadow-host');
-    if (existing) {
-      existing.remove();
-    }
-    shadowHost = null;
-    shadowRoot = null;
-    currentScanId = null;
+  function escapeHTML(str) {
+    return String(str ?? '').replace(/[&<>"']/g, match => {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[match];
+    });
   }
 
-  function removeSecurityBanner() {
-    if (bannerDismissTimer) {
-      clearInterval(bannerDismissTimer);
-      bannerDismissTimer = null;
+  function normalizeUrl(url) {
+    if (window.PhishGuardNormalizer && window.PhishGuardNormalizer.normalizeUrlForComparison) {
+      return window.PhishGuardNormalizer.normalizeUrlForComparison(url);
     }
-    const existingOld = document.getElementById('phishguard-banner-host');
-    if (existingOld) existingOld.remove();
-
-    const existingNew = document.getElementById('phishguard-security-banner');
-    if (existingNew) existingNew.remove();
-
-    bannerHost = null;
-    bannerRoot = null;
-    currentBannerScanId = null;
+    return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
   }
 
-  // ── 1. BOTTOM-RIGHT FLOATING SECURITY BANNER ──────────────────────────────
-  function createSecurityBanner(rawData) {
+  // ── OBSOLETE & LEGACY UI CLEANUP ──────────────────────────────────────────
+  function removeAllPhishGuardUI() {
+    const ids = [
+      'phishguard-security-notification',
+      'phishguard-danger-overlay',
+      'phishguard-shadow-host',
+      'phishguard-security-banner',
+      'phishguard-banner-host'
+    ];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    });
+    notificationHost = null;
+    notificationRoot = null;
+    dangerOverlayHost = null;
+    dangerOverlayRoot = null;
+  }
+
+  function removeNotificationHost() {
+    const el = document.getElementById('phishguard-security-notification');
+    if (el) el.remove();
+    const legacy = document.getElementById('phishguard-security-banner');
+    if (legacy) legacy.remove();
+    const legacyOld = document.getElementById('phishguard-banner-host');
+    if (legacyOld) legacyOld.remove();
+    notificationHost = null;
+    notificationRoot = null;
+  }
+
+  function removeDangerOverlayHost() {
+    const el = document.getElementById('phishguard-danger-overlay');
+    if (el) el.remove();
+    const legacy = document.getElementById('phishguard-shadow-host');
+    if (legacy) legacy.remove();
+    dangerOverlayHost = null;
+    dangerOverlayRoot = null;
+  }
+
+  // ── MASTER 3-LEVEL UI RENDERER ────────────────────────────────────────────
+  function renderSecurityUI(rawData) {
     if (!rawData) return;
-    console.log("[PhishGuard] Creating security banner for result:", rawData);
-
     const data = (window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeScanResult(rawData) : rawData);
     if (!data) return;
+    if (!data.url) data.url = location.href;
 
-    // Prevent duplicate creating if same exact scan ID is currently actively displayed
-    removeSecurityBanner();
+    // Strict Stale-Result Protection: Ensure scan result URL matches current page location
+    const normResultUrl = normalizeUrl(data.url);
+    const normCurrentUrl = normalizeUrl(location.href);
+    if (normResultUrl && normCurrentUrl && normResultUrl !== normCurrentUrl) {
+      console.log(`[PhishGuard] STALE_RESULT_IGNORED: Result URL (${data.url}) !== Current URL (${location.href})`);
+      return;
+    }
 
-    currentBannerScanId = data.scanId || ('scan_' + Date.now());
+    activeScanId = data.scanId || ('scan_' + Date.now());
+    activeScanUrl = data.url;
 
-    // Create fixed host element appended to document.body
-    bannerHost = document.createElement('div');
-    bannerHost.id = 'phishguard-security-banner';
-    bannerHost.style.cssText = 'all: initial !important; position: fixed !important; right: 20px !important; bottom: 20px !important; z-index: 2147483647 !important; pointer-events: none !important; width: auto !important; height: auto !important; display: block !important;';
+    // Resolve 3-Level Security Classification
+    const level = window.PhishGuardNormalizer
+      ? window.PhishGuardNormalizer.resolveSecurityLevel(data)
+      : (data.verdict === 'PHISHING' || (data.riskScore && data.riskScore >= 70.0) ? 'DANGEROUS' : (data.verdict === 'SUSPICIOUS' || (data.riskScore && data.riskScore >= 40.0) ? 'SUSPICIOUS' : 'SAFE'));
 
-    bannerRoot = bannerHost.attachShadow({ mode: 'closed' });
+    if (level === 'DANGEROUS') {
+      // Check if user clicked "Continue Anyway" on this scan/URL
+      if (bypassedScans.has(activeScanId) || bypassedUrls.has(normCurrentUrl)) {
+        console.log(`[PhishGuard] LEVEL 3 OVERLAY BYPASSED by user choice on ${data.url}`);
+        removeDangerOverlayHost();
+        return;
+      }
+      removeNotificationHost();
+      renderLevel3DangerOverlay(data);
+    } else if (level === 'SUSPICIOUS') {
+      removeDangerOverlayHost();
+      renderBottomRightBanner(data, 'SUSPICIOUS');
+    } else {
+      // SAFE (Level 1)
+      removeDangerOverlayHost();
+      renderBottomRightBanner(data, 'SAFE');
+    }
+  }
 
-    const verdict = String(data.verdict || 'SAFE').toUpperCase();
-    const isSafe = verdict === 'SAFE' || verdict === 'LOW';
-    const isSuspicious = verdict === 'SUSPICIOUS' || verdict === 'MEDIUM';
-    const isPhishing = verdict === 'PHISHING' || verdict === 'HIGH' || verdict === 'CRITICAL' || verdict === 'DANGEROUS';
+  // ── LEVEL 1 & LEVEL 2: BOTTOM-RIGHT NOTIFICATION BANNER ──────────────────
+  function renderBottomRightBanner(data, level) {
+    const isSuspicious = level === 'SUSPICIOUS';
+    const scoreVal = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score || 0);
 
     let themeColor = '#10b981'; // Emerald Green
     let themeBg = 'rgba(16, 185, 129, 0.08)';
     let themeBorder = 'rgba(16, 185, 129, 0.35)';
-    let iconSymbol = '🛡️';
-    let titleText = 'Website Safe';
-    let subMessage = 'No phishing or malicious threats detected.';
-    const scoreVal = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score || 0);
-    let metricText = `${Math.round(data.confidence ?? (100 - scoreVal))}% Safe`;
+    let iconSymbol = '✓';
+    let titleText = 'Safe Website';
+    let subMessage = 'Protected by PhishGuard AI';
+    let threatText = `${scoreVal}% Threat`;
+    let actionText = '';
 
     if (isSuspicious) {
       themeColor = '#f59e0b'; // Amber Yellow
       themeBg = 'rgba(245, 158, 11, 0.08)';
       themeBorder = 'rgba(245, 158, 11, 0.35)';
-      iconSymbol = '⚠️';
+      iconSymbol = '⚠';
       titleText = 'Suspicious Website';
-      subMessage = 'Potential security threat detected.';
-      metricText = `${scoreVal}% Risk`;
-    } else if (isPhishing) {
-      themeColor = '#ef4444'; // Crimson Red
-      themeBg = 'rgba(239, 68, 68, 0.08)';
-      themeBorder = 'rgba(239, 68, 68, 0.4)';
-      iconSymbol = '🚨';
-      titleText = 'Phishing Threat Detected';
-      subMessage = 'This website may be dangerous.';
-      metricText = `${scoreVal}% Threat`;
+      threatText = `${scoreVal}% Threat`;
+      actionText = 'Proceed with caution';
+      subMessage = 'Protected by PhishGuard AI';
     }
 
-    // Domain display extraction
+    // Extract domain for display
     let domainStr = 'example.com';
     if (data.url) {
       try {
@@ -126,586 +170,452 @@
       }
     }
 
-    const style = document.createElement('style');
-    style.textContent = `
-      :host {
-        all: initial !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-      }
-      .security-banner-container {
-        pointer-events: auto !important;
-        position: relative !important;
-        width: 360px !important;
-        max-width: calc(100vw - 40px) !important;
-        background: #ffffff !important;
-        border: 1.5px solid ${themeBorder} !important;
-        border-radius: 16px !important;
-        box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
-        padding: 16px 18px !important;
-        box-sizing: border-box !important;
-        color: #0f172a !important;
-        overflow: hidden !important;
-        cursor: default !important;
-        user-select: none !important;
-        animation: bannerSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-        transition: transform 0.25s ease, box-shadow 0.25s ease !important;
-      }
-      .security-banner-container:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.08) !important;
-      }
-      .security-banner-container.dismissing {
-        animation: bannerSlideOut 0.35s cubic-bezier(0.7, 0, 0.84, 0) forwards !important;
-      }
-      @keyframes bannerSlideIn {
-        from { opacity: 0; transform: translateX(120%) scale(0.95); }
-        to { opacity: 1; transform: translateX(0) scale(1); }
-      }
-      @keyframes bannerSlideOut {
-        from { opacity: 1; transform: translateX(0) scale(1); }
-        to { opacity: 0; transform: translateX(120%) scale(0.95); }
-      }
+    // Check if host already exists for single-element update
+    notificationHost = document.getElementById('phishguard-security-notification');
+    if (!notificationHost) {
+      notificationHost = document.createElement('div');
+      notificationHost.id = 'phishguard-security-notification';
+      notificationHost.style.cssText = 'all: initial !important; position: fixed !important; right: 20px !important; bottom: 20px !important; z-index: 2147483647 !important; pointer-events: none !important; width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; display: block !important;';
+      notificationRoot = notificationHost.attachShadow({ mode: 'open' });
 
-      .banner-header {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        margin-bottom: 8px !important;
+      const targetParent = document.body || document.documentElement;
+      if (targetParent) {
+        targetParent.appendChild(notificationHost);
       }
-      .header-title-group {
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-      }
-      .status-icon-box {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: 32px !important;
-        height: 32px !important;
-        background: ${themeBg} !important;
-        border-radius: 10px !important;
-        font-size: 18px !important;
-        flex-shrink: 0 !important;
-      }
-      .banner-title {
-        font-size: 15px !important;
-        font-weight: 700 !important;
-        color: #0f172a !important;
-        line-height: 1.2 !important;
-        letter-spacing: -0.2px !important;
-      }
-
-      .close-btn {
-        background: transparent !important;
-        border: none !important;
-        color: #94a3b8 !important;
-        font-size: 18px !important;
-        font-weight: 600 !important;
-        cursor: pointer !important;
-        width: 28px !important;
-        height: 28px !important;
-        border-radius: 8px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 0 !important;
-        line-height: 1 !important;
-        transition: all 0.15s ease !important;
-      }
-      .close-btn:hover {
-        color: #0f172a !important;
-        background: #f1f5f9 !important;
-      }
-
-      .banner-message {
-        font-size: 13px !important;
-        color: #475569 !important;
-        line-height: 1.4 !important;
-        margin-bottom: 8px !important;
-        font-weight: 450 !important;
-      }
-
-      .domain-tag {
-        display: inline-block !important;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-        font-size: 11.5px !important;
-        color: #64748b !important;
-        background: #f8fafc !important;
-        border: 1px solid #e2e8f0 !important;
-        padding: 3px 8px !important;
-        border-radius: 6px !important;
-        word-break: break-all !important;
-        margin-bottom: 10px !important;
-      }
-
-      .banner-meta-row {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        padding-top: 8px !important;
-        border-top: 1px solid #f1f5f9 !important;
-        margin-top: 4px !important;
-      }
-      .badge-group {
-        display: flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        font-size: 12px !important;
-      }
-      .score-badge {
-        font-weight: 700 !important;
-        color: ${themeColor} !important;
-        background: ${themeBg} !important;
-        padding: 2px 7px !important;
-        border-radius: 6px !important;
-      }
-      .protected-label {
-        color: #94a3b8 !important;
-        font-weight: 500 !important;
-        font-size: 11px !important;
-      }
-
-      .btn-view-details {
-        background: #f8fafc !important;
-        border: 1px solid #cbd5e1 !important;
-        color: #334155 !important;
-        font-size: 12px !important;
-        font-weight: 600 !important;
-        padding: 5px 12px !important;
-        border-radius: 8px !important;
-        cursor: pointer !important;
-        transition: all 0.15s ease !important;
-      }
-      .btn-view-details:hover {
-        background: #f1f5f9 !important;
-        color: #0f172a !important;
-        border-color: #94a3b8 !important;
-      }
-
-      .details-drawer {
-        display: none;
-        margin-top: 12px !important;
-        padding-top: 10px !important;
-        border-top: 1px dashed #e2e8f0 !important;
-        font-size: 11px !important;
-        color: #64748b !important;
-      }
-      .details-drawer.open {
-        display: block !important;
-      }
-      .details-grid {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 6px !important;
-        margin-bottom: 8px !important;
-      }
-      .details-item {
-        background: #f8fafc !important;
-        padding: 6px 8px !important;
-        border-radius: 6px !important;
-      }
-      .details-val {
-        font-weight: 700 !important;
-        color: #1e293b !important;
-      }
-
-      .progress-bar-track {
-        position: absolute !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        height: 3px !important;
-        background: rgba(0,0,0,0.05) !important;
-      }
-      .progress-bar-fill {
-        height: 100% !important;
-        background: ${themeColor} !important;
-        width: 100% !important;
-        transition: width 0.1s linear !important;
-      }
-    `;
-
-    const bannerContainer = document.createElement('div');
-    bannerContainer.className = 'security-banner-container';
-    bannerContainer.innerHTML = `
-      <div class="banner-header">
-        <div class="header-title-group">
-          <div class="status-icon-box">${iconSymbol}</div>
-          <span class="banner-title">${escapeHTML(titleText)}</span>
-        </div>
-        <button class="close-btn" id="btn-banner-close" title="Dismiss">✕</button>
-      </div>
-
-      <div class="banner-message">${escapeHTML(subMessage)}</div>
-      <div class="domain-tag">${escapeHTML(domainStr)}</div>
-
-      <div class="banner-meta-row">
-        <div class="badge-group">
-          <span class="score-badge">${escapeHTML(metricText)}</span>
-          <span class="protected-label">• Protected by PhishGuard AI</span>
-        </div>
-        <button class="btn-view-details" id="btn-view-details">View Details</button>
-      </div>
-
-      <div class="details-drawer" id="details-drawer">
-        <div class="details-grid">
-          <div class="details-item">Model: <span class="details-val">${escapeHTML(data.modelDisplay || 'DL Ensemble')}</span></div>
-          <div class="details-item">Latency: <span class="details-val">${data.inferenceTimeMs ? data.inferenceTimeMs + 'ms' : 'Fast'}</span></div>
-          <div class="details-item">Risk Score: <span class="details-val">${scoreVal}/100</span></div>
-          <div class="details-item">Confidence: <span class="details-val">${data.confidence ?? 99}%</span></div>
-        </div>
-      </div>
-
-      <div class="progress-bar-track">
-        <div class="progress-bar-fill" id="progress-bar-fill"></div>
-      </div>
-    `;
-
-    shadowRoot.appendChild(style);
-    shadowRoot.appendChild(bannerContainer);
-
-    // Append to document.body (or fallback document.documentElement)
-    const targetParent = document.body || document.documentElement;
-    if (targetParent) {
-      targetParent.appendChild(bannerHost);
+    } else {
+      notificationRoot = notificationHost.shadowRoot || notificationHost.attachShadow({ mode: 'open' });
     }
 
-    // Dismiss handler
-    let isDismissed = false;
-    const dismissBanner = () => {
-      if (isDismissed) return;
-      isDismissed = true;
-      if (bannerDismissTimer) {
-        clearInterval(bannerDismissTimer);
-        bannerDismissTimer = null;
-      }
-      if (bannerContainer) {
-        bannerContainer.classList.add('dismissing');
-        setTimeout(() => removeSecurityBanner(), 350);
-      } else {
-        removeSecurityBanner();
-      }
-    };
+    const htmlContent = `
+      <style>
+        :host {
+          all: initial !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+        .security-banner-container {
+          pointer-events: auto !important;
+          position: relative !important;
+          width: 340px !important;
+          max-width: calc(100vw - 40px) !important;
+          background: #ffffff !important;
+          border: 1.5px solid ${themeBorder} !important;
+          border-radius: 16px !important;
+          box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+          padding: 14px 16px !important;
+          box-sizing: border-box !important;
+          color: #0f172a !important;
+          overflow: hidden !important;
+          cursor: default !important;
+          user-select: none !important;
+          animation: bannerSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+          transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+        }
+        .security-banner-container:hover {
+          transform: translateY(-2px) !important;
+          box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+        }
+        @keyframes bannerSlideIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
 
-    // Close button listener
-    const closeBtn = shadowRoot.getElementById('btn-banner-close');
+        .banner-header {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          margin-bottom: 6px !important;
+        }
+        .header-title-group {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+        .status-icon-box {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 28px !important;
+          height: 28px !important;
+          background: ${themeBg} !important;
+          border-radius: 8px !important;
+          font-size: 16px !important;
+          color: ${themeColor} !important;
+          font-weight: bold !important;
+          flex-shrink: 0 !important;
+        }
+        .banner-title {
+          font-size: 14px !important;
+          font-weight: 700 !important;
+          color: #0f172a !important;
+          line-height: 1.2 !important;
+        }
+        .close-btn {
+          background: transparent !important;
+          border: none !important;
+          color: #94a3b8 !important;
+          font-size: 16px !important;
+          cursor: pointer !important;
+          padding: 2px 6px !important;
+          line-height: 1 !important;
+          border-radius: 6px !important;
+          transition: color 0.2s ease !important;
+        }
+        .close-btn:hover {
+          color: #0f172a !important;
+          background: #f1f5f9 !important;
+        }
+
+        .banner-info-row {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          font-size: 12px !important;
+          color: #475569 !important;
+          margin-top: 4px !important;
+        }
+        .threat-tag {
+          font-weight: 700 !important;
+          color: ${themeColor} !important;
+          background: ${themeBg} !important;
+          padding: 2px 8px !important;
+          border-radius: 6px !important;
+          font-size: 11px !important;
+        }
+        .action-text {
+          font-size: 11px !important;
+          color: #d97706 !important;
+          font-weight: 600 !important;
+        }
+        .sub-message {
+          font-size: 11px !important;
+          color: #64748b !important;
+          margin-top: 6px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+        }
+        .details-btn {
+          background: none !important;
+          border: none !important;
+          color: #3b82f6 !important;
+          font-size: 11px !important;
+          cursor: pointer !important;
+          padding: 0 !important;
+          text-decoration: underline !important;
+        }
+        .details-drawer {
+          display: none !important;
+          margin-top: 8px !important;
+          padding-top: 8px !important;
+          border-top: 1px solid #e2e8f0 !important;
+          font-size: 11px !important;
+          color: #64748b !important;
+        }
+        .details-drawer.open {
+          display: block !important;
+        }
+        .details-grid {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 4px 12px !important;
+        }
+      </style>
+
+      <div class="security-banner-container">
+        <div class="banner-header">
+          <div class="header-title-group">
+            <div class="status-icon-box">${iconSymbol}</div>
+            <span class="banner-title">${escapeHTML(titleText)}</span>
+          </div>
+          <button class="close-btn" id="btn-banner-close" title="Dismiss">✕</button>
+        </div>
+
+        <div class="banner-info-row">
+          <span class="threat-tag">${escapeHTML(threatText)}</span>
+          ${actionText ? `<span class="action-text">${escapeHTML(actionText)}</span>` : `<span style="font-size:11px;color:#94a3b8;">${escapeHTML(domainStr)}</span>`}
+        </div>
+
+        <div class="sub-message">
+          <span>${escapeHTML(subMessage)}</span>
+          <button class="details-btn" id="btn-toggle-details">Details</button>
+        </div>
+
+        <div class="details-drawer" id="details-drawer">
+          <div class="details-grid">
+            <div>Model: <strong>${escapeHTML(data.modelDisplay || 'DL Ensemble')}</strong></div>
+            <div>Latency: <strong>${data.inferenceTimeMs ? data.inferenceTimeMs + 'ms' : 'Fast'}</strong></div>
+            <div>Risk Score: <strong>${scoreVal}/100</strong></div>
+            <div>Confidence: <strong>${data.confidence ?? 99}%</strong></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    notificationRoot.innerHTML = htmlContent;
+
+    // Event Handlers
+    const closeBtn = notificationRoot.getElementById('btn-banner-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        dismissBanner();
+        removeNotificationHost();
       });
     }
 
-    // Details Drawer toggle
-    let detailsOpen = false;
-    const detailsBtn = shadowRoot.getElementById('btn-view-details');
-    const detailsDrawer = shadowRoot.getElementById('details-drawer');
-    if (detailsBtn && detailsDrawer) {
-      detailsBtn.addEventListener('click', (e) => {
+    const toggleBtn = notificationRoot.getElementById('btn-toggle-details');
+    const drawer = notificationRoot.getElementById('details-drawer');
+    if (toggleBtn && drawer) {
+      toggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        detailsOpen = !detailsOpen;
-        if (detailsOpen) {
-          detailsDrawer.classList.add('open');
-          detailsBtn.textContent = 'Hide Details';
-          isPaused = true;
+        const isOpen = drawer.classList.contains('open');
+        if (isOpen) {
+          drawer.classList.remove('open');
+          toggleBtn.textContent = 'Details';
         } else {
-          detailsDrawer.classList.remove('open');
-          detailsBtn.textContent = 'View Details';
-          isPaused = false;
+          drawer.classList.add('open');
+          toggleBtn.textContent = 'Hide';
         }
       });
     }
-
-    // 5-Second Auto-Hide Timer with Progress Bar & Mouse Hover Pause
-    const totalMs = 5000;
-    let remainingMs = totalMs;
-    let isPaused = false;
-    const progressFill = shadowRoot.getElementById('progress-bar-fill');
-
-    bannerContainer.addEventListener('mouseenter', () => { isPaused = true; });
-    bannerContainer.addEventListener('mouseleave', () => { if (!detailsOpen) isPaused = false; });
-
-    bannerDismissTimer = setInterval(() => {
-      if (!isPaused) {
-        remainingMs -= 100;
-        if (progressFill) {
-          const pct = Math.max(0, (remainingMs / totalMs) * 100);
-          progressFill.style.width = pct + '%';
-        }
-        if (remainingMs <= 0) {
-          dismissBanner();
-        }
-      }
-    }, 100);
   }
 
-  // Alias for backward compatibility
-  const createResultBanner = createSecurityBanner;
+  // ── LEVEL 3: FULL-SCREEN DANGEROUS OVERLAY ────────────────────────────────
+  function renderLevel3DangerOverlay(data) {
+    const scoreVal = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score || 92);
+    const confidenceVal = data.confidence ?? 99.0;
+    const threatLevelStr = escapeHTML(data.threatLevel || 'HIGH');
 
-  // ── 2. FULL-SCREEN THREAT WARNING OVERLAY (PHISHING) ──────────────────────
-  function createShadowOverlay(rawData) {
-    if (!rawData) return;
-    const data = (window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeScanResult(rawData) : rawData);
-    if (!data || !data.url) return;
+    dangerOverlayHost = document.getElementById('phishguard-danger-overlay');
+    if (!dangerOverlayHost) {
+      dangerOverlayHost = document.createElement('div');
+      dangerOverlayHost.id = 'phishguard-danger-overlay';
+      dangerOverlayHost.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; pointer-events: auto !important; margin: 0 !important; padding: 0 !important; display: block !important;';
+      dangerOverlayRoot = dangerOverlayHost.attachShadow({ mode: 'open' });
 
-    if (shadowHost && currentScanId === data.scanId) {
-      return;
+      const targetParent = document.body || document.documentElement;
+      if (targetParent) {
+        targetParent.appendChild(dangerOverlayHost);
+      }
+    } else {
+      dangerOverlayRoot = dangerOverlayHost.shadowRoot || dangerOverlayHost.attachShadow({ mode: 'open' });
     }
-
-    removeExistingOverlay();
-    currentScanId = data.scanId;
-
-    shadowHost = document.createElement('div');
-    shadowHost.id = 'phishguard-shadow-host';
-    shadowHost.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; pointer-events: auto !important; margin: 0 !important; padding: 0 !important; display: block !important;';
-
-    shadowRoot = shadowHost.attachShadow({ mode: 'closed' });
-
-    const style = document.createElement('style');
-    style.textContent = `
-      :host {
-        all: initial !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-      }
-      .overlay-backdrop {
-        position: fixed !important;
-        top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-        width: 100vw !important; height: 100vh !important;
-        background: rgba(10, 15, 29, 0.97) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 24px !important;
-        box-sizing: border-box !important;
-        color: #f8fafc !important;
-        z-index: 2147483647 !important;
-      }
-      .modal-card {
-        background: rgba(23, 32, 54, 0.96) !important;
-        border: 1px solid rgba(239, 68, 68, 0.5) !important;
-        border-radius: 24px !important;
-        max-width: 680px !important;
-        width: 100% !important;
-        padding: 44px !important;
-        box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.4), 0 0 90px rgba(239, 68, 68, 0.2) !important;
-        text-align: center !important;
-        box-sizing: border-box !important;
-      }
-      .shield-icon-container {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        margin-bottom: 18px !important;
-      }
-      .shield-icon-img {
-        width: 80px !important;
-        height: 80px !important;
-        object-fit: contain !important;
-        filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.6)) !important;
-      }
-      .threat-badge {
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        background: rgba(239, 68, 68, 0.15) !important;
-        border: 1px solid rgba(239, 68, 68, 0.4) !important;
-        color: #ef4444 !important;
-        font-size: 13px !important;
-        font-weight: 800 !important;
-        padding: 6px 16px !important;
-        border-radius: 9999px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        margin-bottom: 20px !important;
-      }
-      .title {
-        font-size: 28px !important;
-        font-weight: 800 !important;
-        color: #ffffff !important;
-        margin: 0 0 14px 0 !important;
-        letter-spacing: -0.5px !important;
-      }
-      .description {
-        font-size: 15px !important;
-        color: #94a3b8 !important;
-        line-height: 1.6 !important;
-        margin: 0 0 24px 0 !important;
-      }
-      .url-box {
-        background: rgba(15, 23, 42, 0.8) !important;
-        border: 1px dashed rgba(239, 68, 68, 0.4) !important;
-        border-radius: 12px !important;
-        padding: 12px 18px !important;
-        font-family: monospace !important;
-        font-size: 14px !important;
-        color: #f87171 !important;
-        word-break: break-all !important;
-        margin-bottom: 24px !important;
-      }
-      .metrics-grid {
-        display: grid !important;
-        grid-template-columns: repeat(3, 1fr) !important;
-        gap: 12px !important;
-        margin-bottom: 24px !important;
-      }
-      .metric-box {
-        background: rgba(15, 23, 42, 0.6) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 14px !important;
-        padding: 14px !important;
-      }
-      .metric-val {
-        font-size: 22px !important;
-        font-weight: 800 !important;
-        color: #ef4444 !important;
-      }
-      .metric-lbl {
-        font-size: 11px !important;
-        color: #64748b !important;
-        text-transform: uppercase !important;
-        font-weight: 700 !important;
-        margin-top: 4px !important;
-      }
-      .signals-list {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 8px !important;
-        margin-bottom: 32px !important;
-        text-align: left !important;
-        max-height: 120px !important;
-        overflow-y: auto !important;
-      }
-      .signal-item {
-        display: flex !important;
-        align-items: center !important;
-        gap: 10px !important;
-        background: rgba(15, 23, 42, 0.4) !important;
-        padding: 10px 14px !important;
-        border-radius: 10px !important;
-        font-size: 13px !important;
-        color: #cbd5e1 !important;
-      }
-      .actions {
-        display: flex !important;
-        gap: 16px !important;
-        justify-content: center !important;
-      }
-      .btn-primary {
-        background: #ef4444 !important;
-        color: #ffffff !important;
-        border: none !important;
-        padding: 16px 32px !important;
-        border-radius: 14px !important;
-        font-size: 15px !important;
-        font-weight: 800 !important;
-        cursor: pointer !important;
-        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4) !important;
-        transition: all 0.2s ease !important;
-      }
-      .btn-primary:hover {
-        background: #dc2626 !important;
-        transform: translateY(-1px) !important;
-      }
-      .btn-secondary {
-        background: transparent !important;
-        color: #94a3b8 !important;
-        border: 1px solid rgba(255, 255, 255, 0.18) !important;
-        padding: 16px 26px !important;
-        border-radius: 14px !important;
-        font-size: 14px !important;
-        font-weight: 700 !important;
-        cursor: pointer !important;
-        transition: all 0.2s ease !important;
-      }
-      .btn-secondary:hover {
-        color: #ffffff !important;
-        background: rgba(255, 255, 255, 0.08) !important;
-      }
-    `;
 
     const modalLogoUrl = safeGetURL('icons/icon128.png');
     const modalImgTag = modalLogoUrl
       ? `<img src="${escapeHTML(modalLogoUrl)}" class="shield-icon-img" alt="PhishGuard Shield">`
       : `<span style="font-size:72px;">🛡️</span>`;
 
-    const modalContainer = document.createElement('div');
-    modalContainer.className = 'overlay-backdrop';
-    modalContainer.innerHTML = `
-      <div class="modal-card">
-        <div class="shield-icon-container">${modalImgTag}</div>
-        <div class="threat-badge">
-          <span>⚠️ PHISHGUARD AI SECURITY INTERSTITIAL</span>
-        </div>
-        <h1 class="title">Critical Phishing Threat Intercepted</h1>
-        <p class="description">
-          PhishGuard AI's real-time PyTorch Deep Learning Ensemble detected severe credential harvesting and phishing anomaly patterns on this website.
-        </p>
+    const htmlContent = `
+      <style>
+        :host {
+          all: initial !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+        .overlay-backdrop {
+          position: fixed !important;
+          top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+          width: 100vw !important; height: 100vh !important;
+          background: rgba(10, 15, 29, 0.97) !important;
+          backdrop-filter: blur(20px) !important;
+          -webkit-backdrop-filter: blur(20px) !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 24px !important;
+          box-sizing: border-box !important;
+          color: #f8fafc !important;
+          z-index: 2147483647 !important;
+          pointer-events: auto !important;
+        }
+        .modal-card {
+          background: rgba(23, 32, 54, 0.96) !important;
+          border: 1.5px solid rgba(239, 68, 68, 0.5) !important;
+          border-radius: 24px !important;
+          max-width: 640px !important;
+          width: 100% !important;
+          padding: 40px 36px !important;
+          box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.4), 0 0 90px rgba(239, 68, 68, 0.2) !important;
+          text-align: center !important;
+          box-sizing: border-box !important;
+        }
+        .shield-icon-container {
+          display: flex !important;
+          justify-content: center !important;
+          align-items: center !important;
+          margin-bottom: 16px !important;
+        }
+        .shield-icon-img {
+          width: 72px !important;
+          height: 72px !important;
+          object-fit: contain !important;
+          filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.6)) !important;
+        }
+        .threat-badge {
+          display: inline-flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          background: rgba(239, 68, 68, 0.15) !important;
+          border: 1px solid rgba(239, 68, 68, 0.4) !important;
+          color: #ef4444 !important;
+          font-size: 12px !important;
+          font-weight: 800 !important;
+          padding: 6px 16px !important;
+          border-radius: 9999px !important;
+          text-transform: uppercase !important;
+          letter-spacing: 1px !important;
+          margin-bottom: 18px !important;
+        }
+        .title {
+          font-size: 26px !important;
+          font-weight: 800 !important;
+          color: #ffffff !important;
+          margin: 0 0 12px 0 !important;
+          letter-spacing: -0.5px !important;
+        }
+        .description {
+          font-size: 15px !important;
+          color: #94a3b8 !important;
+          line-height: 1.5 !important;
+          margin: 0 0 20px 0 !important;
+        }
+        .url-box {
+          background: rgba(15, 23, 42, 0.8) !important;
+          border: 1px dashed rgba(239, 68, 68, 0.4) !important;
+          border-radius: 12px !important;
+          padding: 10px 16px !important;
+          font-family: monospace !important;
+          font-size: 13px !important;
+          color: #f87171 !important;
+          word-break: break-all !important;
+          margin-bottom: 20px !important;
+        }
+        .metrics-grid {
+          display: grid !important;
+          grid-template-columns: repeat(3, 1fr) !important;
+          gap: 12px !important;
+          margin-bottom: 24px !important;
+        }
+        .metric-box {
+          background: rgba(15, 23, 42, 0.6) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          border-radius: 14px !important;
+          padding: 12px !important;
+        }
+        .metric-val {
+          font-size: 20px !important;
+          font-weight: 800 !important;
+          color: #ef4444 !important;
+        }
+        .metric-lbl {
+          font-size: 11px !important;
+          color: #64748b !important;
+          text-transform: uppercase !important;
+          font-weight: 700 !important;
+          margin-top: 4px !important;
+        }
+        .actions {
+          display: flex !important;
+          gap: 14px !important;
+          justify-content: center !important;
+        }
+        .btn-primary {
+          background: #ef4444 !important;
+          color: #ffffff !important;
+          border: none !important;
+          padding: 14px 28px !important;
+          border-radius: 12px !important;
+          font-size: 14px !important;
+          font-weight: 800 !important;
+          cursor: pointer !important;
+          box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4) !important;
+          transition: all 0.2s ease !important;
+        }
+        .btn-primary:hover {
+          background: #dc2626 !important;
+          transform: translateY(-1px) !important;
+        }
+        .btn-secondary {
+          background: transparent !important;
+          color: #94a3b8 !important;
+          border: 1px solid rgba(255, 255, 255, 0.18) !important;
+          padding: 14px 24px !important;
+          border-radius: 12px !important;
+          font-size: 14px !important;
+          font-weight: 700 !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+        }
+        .btn-secondary:hover {
+          color: #ffffff !important;
+          background: rgba(255, 255, 255, 0.08) !important;
+        }
+      </style>
 
-        <div class="url-box">${escapeHTML(data.url)}</div>
+      <div class="overlay-backdrop">
+        <div class="modal-card">
+          <div class="shield-icon-container">${modalImgTag}</div>
+          <div class="threat-badge">
+            <span>⚠️ PHISHGUARD AI SECURITY INTERSTITIAL</span>
+          </div>
+          <h1 class="title">DANGEROUS WEBSITE</h1>
+          <p class="description">
+            This website may be dangerous. PhishGuard AI detected potentially malicious activity.
+          </p>
 
-        <div class="metrics-grid">
-          <div class="metric-box">
-            <div class="metric-val">${data.riskScore ?? data.risk_score ?? 0}%</div>
-            <div class="metric-lbl">Risk Score</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-val" style="color:#f59e0b;">${data.confidence ?? 99.0}%</div>
-            <div class="metric-lbl">DL Confidence</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-val" style="color:#ef4444;">${escapeHTML(data.threatLevel ?? data.threat_level ?? 'CRITICAL')}</div>
-            <div class="metric-lbl">Threat Level</div>
-          </div>
-        </div>
+          <div class="url-box">${escapeHTML(data.url)}</div>
 
-        <div class="signals-list">
-          ${(Array.isArray(data.signals) ? data.signals : []).map(s => `
-            <div class="signal-item">
-              <span>🚨</span>
-              <span><strong>${escapeHTML(s.signal || s.name || 'Suspicious Signal')}:</strong> ${escapeHTML(s.description || s.details || '')}</span>
+          <div class="metrics-grid">
+            <div class="metric-box">
+              <div class="metric-val" style="color:#ef4444;">${scoreVal}%</div>
+              <div class="metric-lbl">Actual Threat</div>
             </div>
-          `).join('') || '<div class="signal-item"><span>🚨</span><span>High-risk neural network sequence anomaly detected</span></div>'}
-        </div>
+            <div class="metric-box">
+              <div class="metric-val" style="color:#f59e0b;">${confidenceVal}%</div>
+              <div class="metric-lbl">DL Confidence</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-val" style="color:#ef4444;">${threatLevelStr}</div>
+              <div class="metric-lbl">Threat Level</div>
+            </div>
+          </div>
 
-        <div class="actions">
-          <button class="btn-primary" id="btn-safety">GO BACK TO SAFETY</button>
-          <button class="btn-secondary" id="btn-proceed">CONTINUE AT MY OWN RISK</button>
+          <div class="actions">
+            <button class="btn-primary" id="btn-safety">Go Back to Safety</button>
+            <button class="btn-secondary" id="btn-proceed">Continue Anyway</button>
+          </div>
         </div>
       </div>
     `;
 
-    shadowRoot.appendChild(style);
-    shadowRoot.appendChild(modalContainer);
+    dangerOverlayRoot.innerHTML = htmlContent;
 
-    const targetParent = document.body || document.documentElement;
-    if (targetParent) {
-      targetParent.appendChild(shadowHost);
+    // Button Handlers
+    const safetyBtn = dangerOverlayRoot.getElementById('btn-safety');
+    if (safetyBtn) {
+      safetyBtn.addEventListener('click', () => {
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.href = 'https://google.com';
+        }
+      });
     }
 
-    // Event Handlers
-    shadowRoot.getElementById('btn-safety').addEventListener('click', () => {
-      if (window.history.length > 1) {
-        window.history.back();
-      } else {
-        window.location.href = 'https://google.com';
-      }
-    });
-
-    shadowRoot.getElementById('btn-proceed').addEventListener('click', () => {
-      removeExistingOverlay();
-    });
+    const proceedBtn = dangerOverlayRoot.getElementById('btn-proceed');
+    if (proceedBtn) {
+      proceedBtn.addEventListener('click', () => {
+        if (activeScanId) bypassedScans.add(activeScanId);
+        if (activeScanUrl) bypassedUrls.add(normalizeUrl(activeScanUrl));
+        removeDangerOverlayHost();
+      });
+    }
   }
 
-  function escapeHTML(str) {
-    return String(str ?? '').replace(/[&<>"']/g, match => {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[match];
-    });
-  }
+  // Backward compatibility alias functions
+  window.createSecurityBanner = renderSecurityUI;
+  window.createShadowOverlay = renderSecurityUI;
 
-  // ── BACKGROUND MESSAGE LISTENER ───────────────────────────────────────────
+  // ── BACKGROUND & WINDOW MESSAGE LISTENERS ─────────────────────────────────
   try {
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -713,111 +623,91 @@
           console.log("[PhishGuard] Content script received:", message);
           const scanResult = message.result || message.data;
 
-          if (message.type === 'PHISHGUARD_SCAN_COMPLETE' || message.action === 'SHOW_RESULT_BANNER' || message.action === 'SHOW_SAFE_BANNER') {
-            createSecurityBanner(scanResult);
-            sendResponse({ status: 'banner_rendered' });
-          } else if (message.action === 'SHOW_THREAT_WARNING') {
-            createShadowOverlay(scanResult);
-            createSecurityBanner(scanResult);
-            sendResponse({ status: 'warning_rendered' });
+          if (message.type === 'PHISHGUARD_SCAN_COMPLETE' || message.action === 'SHOW_RESULT_BANNER' || message.action === 'SHOW_SAFE_BANNER' || message.action === 'SHOW_THREAT_WARNING') {
+            renderSecurityUI(scanResult);
+            sendResponse({ status: 'ui_rendered' });
           } else if (message.action === 'CLEAR_THREAT_WARNING' || message.action === 'CLEAR_SAFE_BANNER') {
-            removeExistingOverlay();
-            removeSecurityBanner();
-            sendResponse({ status: 'overlays_cleared' });
+            removeAllPhishGuardUI();
+            sendResponse({ status: 'ui_cleared' });
           }
         } catch (e) {
-          console.error("[PhishGuard] Error rendering notification from content script:", e);
+          console.error("[PhishGuard] Error rendering UI from content script:", e);
         }
       });
     }
   } catch (e) {}
 
-  // Window message fallback listener for web app integration, test harness & in-page events
   window.addEventListener('message', (event) => {
     try {
       if (!event.data) return;
-
-      // Web App Integration Handshake Ping
       if (event.data.type === 'PHISHGUARD_PING') {
-        window.postMessage({
-          type: 'PHISHGUARD_PONG',
-          installed: true,
-          version: '2.0.0',
-          timestamp: Date.now()
-        }, '*');
+        window.postMessage({ type: 'PHISHGUARD_PONG', installed: true, version: '2.0.0', timestamp: Date.now() }, '*');
         return;
       }
-
-      // Web App Trigger Scan Request
       if (event.data.type === 'PHISHGUARD_TRIGGER_SCAN' && event.data.url) {
         safeSendMessage({ action: 'PERFORM_SCAN', url: event.data.url }, (resp) => {
           if (resp && resp.result) {
-            window.postMessage({
-              type: 'PHISHGUARD_SCAN_RESPONSE',
-              result: resp.result
-            }, '*');
+            window.postMessage({ type: 'PHISHGUARD_SCAN_RESPONSE', result: resp.result }, '*');
           }
         });
         return;
       }
-
       if (event.data.phishguardMsg) {
         const message = event.data.phishguardMsg;
-        console.log("[PhishGuard] Content script received (window.postMessage):", message);
         const scanResult = message.result || message.data;
-        if (message.type === 'PHISHGUARD_SCAN_COMPLETE' || message.action === 'SHOW_RESULT_BANNER' || message.action === 'SHOW_SAFE_BANNER') {
-          createSecurityBanner(scanResult);
-        } else if (message.action === 'SHOW_THREAT_WARNING') {
-          createShadowOverlay(scanResult);
-          createSecurityBanner(scanResult);
-        }
+        renderSecurityUI(scanResult);
       }
     } catch (e) {}
   });
 
   // ── SPA ROUTE MUTATION & NAVIGATION MONITOR ──────────────────────────────
   let lastObservedUrl = location.href;
+  let urlCheckTimer = null;
 
   function handleUrlChange() {
     try {
       const currentUrl = location.href;
       if (currentUrl !== lastObservedUrl) {
         lastObservedUrl = currentUrl;
-        removeExistingOverlay();
-        removeSecurityBanner();
+        console.log("[PhishGuard] SPA URL Changed:", currentUrl);
+        removeAllPhishGuardUI();
         safeSendMessage({ action: 'URL_CHANGED', url: currentUrl });
       }
     } catch (e) {}
+  }
+
+  function debouncedHandleUrlChange() {
+    if (urlCheckTimer) clearTimeout(urlCheckTimer);
+    urlCheckTimer = setTimeout(() => {
+      handleUrlChange();
+    }, 100);
   }
 
   // Intercept pushState & replaceState
   const rawPushState = history.pushState;
   history.pushState = function () {
     rawPushState.apply(this, arguments);
-    handleUrlChange();
+    debouncedHandleUrlChange();
   };
 
   const rawReplaceState = history.replaceState;
   history.replaceState = function () {
     rawReplaceState.apply(this, arguments);
-    handleUrlChange();
+    debouncedHandleUrlChange();
   };
 
-  window.addEventListener('popstate', handleUrlChange);
+  window.addEventListener('popstate', debouncedHandleUrlChange);
 
-  // MutationObserver fallback for single-page apps
+  // MutationObserver for SPA framework navigation (e.g. YouTube)
   new MutationObserver(() => {
-    handleUrlChange();
-  }).observe(document, { subtree: true, childList: true });
+    debouncedHandleUrlChange();
+  }).observe(document.documentElement || document, { subtree: true, childList: true });
 
   // ── ON CONTENT SCRIPT INITIALIZATION ─────────────────────────────────────
   function initTabScanState() {
     safeSendMessage({ action: 'GET_CURRENT_SCAN_STATE', url: location.href }, (state) => {
       if (state && state.status === 'SUCCESS') {
-        if (state.verdict === 'PHISHING' || (state.riskScore !== null && (state.riskScore >= 71.0 || state.risk_score >= 71.0))) {
-          createShadowOverlay(state);
-        }
-        createSecurityBanner(state);
+        renderSecurityUI(state);
       }
     });
   }

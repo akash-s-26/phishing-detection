@@ -307,22 +307,14 @@ async function performScan(tabId, url, triggerSource = 'nav') {
 
   if (existingState && existingState.status === 'SUCCESS' && normUrl === existingNormUrl && triggerSource !== 'manual') {
     console.log(`[PhishGuard] EXISTING_SUCCESS_PRESERVED Tab ${tabId} | URL: ${url}`);
-    if (existingState.verdict === 'PHISHING' || (existingState.riskScore !== null && existingState.riskScore >= 71.0)) {
-      sendOrInjectWarning(tabId, existingState);
-    } else {
-      sendOrInjectResultBanner(tabId, existingState);
-    }
+    sendOrInjectResultBanner(tabId, existingState);
     return;
   }
 
   if (isDuplicateNavigation(tabId, url) && triggerSource !== 'manual') {
     console.log(`[PhishGuard] SCAN_DUP_IGNORED Tab ${tabId} | URL: ${url}`);
     if (existingState && existingState.status === 'SUCCESS') {
-      if (existingState.verdict === 'PHISHING' || (existingState.riskScore !== null && existingState.riskScore >= 71.0)) {
-        sendOrInjectWarning(tabId, existingState);
-      } else {
-        sendOrInjectResultBanner(tabId, existingState);
-      }
+      sendOrInjectResultBanner(tabId, existingState);
     }
     return;
   }
@@ -439,11 +431,8 @@ async function performScan(tabId, url, triggerSource = 'nav') {
       }
     } catch (nErr) {}
 
-    // 3. AUTOMATICALLY TRIGGER RESULT BANNER FOR ALL RESULTS AND WARNING OVERLAY IF PHISHING
+    // 3. AUTOMATICALLY TRIGGER RESULT UI FOR SCAN RESULT
     sendOrInjectResultBanner(tabId, scan);
-    if (scan.verdict === 'PHISHING' || (scan.riskScore !== null && scan.riskScore >= 71.0)) {
-      sendOrInjectWarning(tabId, scan);
-    }
 
   } catch (error) {
     console.error(`[PhishGuard] SCAN_ERROR Tab ${tabId}:`, error.message);

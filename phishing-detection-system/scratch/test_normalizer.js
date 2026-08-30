@@ -3,7 +3,7 @@
  * Verification test suite for PhishGuardNormalizer API parsing layer.
  */
 
-const { PhishGuardNormalizer, normalizeScanResult, getModelDisplay, normalizeRiskScore, normalizeConfidence, normalizeVerdict } = require('../chrome-extension/normalizer.js');
+const { PhishGuardNormalizer, normalizeScanResult, getModelDisplay, normalizeRiskScore, normalizeConfidence, normalizeVerdict, resolveSecurityLevel } = require('../chrome-extension/normalizer.js');
 
 console.log("==================================================");
 console.log("PHISHGUARD AI NORMALIZER TEST SUITE");
@@ -84,6 +84,15 @@ const normMalformed = normalizeScanResult(rawMalformed);
 assert(normMalformed.verdict === "UNKNOWN", "Malformed verdict -> 'UNKNOWN'");
 assert(normMalformed.modelDisplay === "Deep Learning", "Malformed model -> 'Deep Learning'");
 assert(normMalformed.riskScore === null, "Malformed risk -> null");
+
+// 3-Level Security System classification tests
+const resolveLevel = resolveSecurityLevel || (PhishGuardNormalizer && PhishGuardNormalizer.resolveSecurityLevel);
+assert(resolveLevel({ verdict: 'SAFE', riskScore: 5.0 }) === 'SAFE', "Level 1 SAFE classification");
+assert(resolveLevel({ verdict: 'SUSPICIOUS', riskScore: 55.0 }) === 'SUSPICIOUS', "Level 2 SUSPICIOUS classification");
+assert(resolveLevel({ verdict: 'PHISHING', riskScore: 92.0 }) === 'DANGEROUS', "Level 3 DANGEROUS classification");
+assert(resolveLevel({ riskScore: 20.0 }) === 'SAFE', "Score 20% -> SAFE threshold fallback");
+assert(resolveLevel({ riskScore: 50.0 }) === 'SUSPICIOUS', "Score 50% -> SUSPICIOUS threshold fallback");
+assert(resolveLevel({ riskScore: 85.0 }) === 'DANGEROUS', "Score 85% -> DANGEROUS threshold fallback");
 
 console.log("\n==================================================");
 console.log(`TEST SUMMARY: ${passed} PASSED | ${failed} FAILED`);

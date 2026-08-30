@@ -183,11 +183,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dashboardBtn) {
       dashboardBtn.addEventListener('click', async () => {
         const config = (typeof globalThis !== 'undefined' && globalThis.PhishGuardConfig) ? globalThis.PhishGuardConfig : {
-          FRONTEND_DASHBOARD_URL: 'http://localhost:5173/dashboard',
-          ALLOWED_FRONTEND_PATTERNS: ['*://localhost:5173/*', '*://127.0.0.1:5173/*', 'https://*.netlify.app/*']
+          FRONTEND_DASHBOARD_URL: 'https://phishing-detection-ai.netlify.app/dashboard',
+          ALLOWED_FRONTEND_PATTERNS: ['https://phishing-detection-ai.netlify.app/*', 'https://*.netlify.app/*', '*://localhost:5173/*', '*://127.0.0.1:5173/*']
         };
-        const dashboardUrl = config.FRONTEND_DASHBOARD_URL || 'http://localhost:5173/dashboard';
-        const patterns = config.ALLOWED_FRONTEND_PATTERNS || ['*://localhost:5173/*', '*://127.0.0.1:5173/*', 'https://*.netlify.app/*'];
+        const dashboardUrl = config.FRONTEND_DASHBOARD_URL || 'https://phishing-detection-ai.netlify.app/dashboard';
+        const patterns = config.ALLOWED_FRONTEND_PATTERNS || ['https://phishing-detection-ai.netlify.app/*', 'https://*.netlify.app/*', '*://localhost:5173/*', '*://127.0.0.1:5173/*'];
 
         try {
           const existingTabs = await chrome.tabs.query({ url: patterns });

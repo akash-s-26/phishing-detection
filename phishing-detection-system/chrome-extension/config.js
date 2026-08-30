@@ -3,7 +3,7 @@
  * Centralized API & Netlify Dashboard URL settings.
  */
 
-const IS_PRODUCTION = false; // Set to true for production build
+const IS_PRODUCTION = true; // Set to true for production build
 
 const CONFIG = {
   DEV: {
@@ -18,7 +18,16 @@ const CONFIG = {
   }
 };
 
-const ACTIVE_CONFIG = IS_PRODUCTION ? CONFIG.PROD : CONFIG.DEV;
+const THRESHOLDS = {
+  SAFE_MAX: 39.9,
+  SUSPICIOUS_MAX: 69.9,
+  DANGEROUS_MIN: 70.0
+};
+
+const ACTIVE_CONFIG = {
+  ...(IS_PRODUCTION ? CONFIG.PROD : CONFIG.DEV),
+  THRESHOLDS
+};
 
 if (typeof window !== 'undefined') {
   window.PhishGuardConfig = ACTIVE_CONFIG;
