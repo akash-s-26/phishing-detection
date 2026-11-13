@@ -7,6 +7,7 @@ EXTENSION_DIR = os.path.join(BASE_DIR, 'chrome-extension')
 OUTPUT_PATHS = [
     os.path.join(BASE_DIR, 'dist-extension', 'phishguard-ai-extension.zip'),
     os.path.join(BASE_DIR, 'frontend', 'public', 'phishguard-ai-extension.zip'),
+    os.path.join(BASE_DIR, 'frontend', 'dist', 'phishguard-ai-extension.zip'),
     os.path.join(BASE_DIR, 'backend', 'phishguard-ai-extension.zip')
 ]
 

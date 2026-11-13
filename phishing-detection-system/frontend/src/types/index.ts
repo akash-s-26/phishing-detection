@@ -34,19 +34,47 @@ export interface DLModelMetadata {
   inference_time_ms: number;
 }
 
+export type DetectionLevel = 1 | 2 | 3;
+
+export interface DetectionLevelMeta {
+  level: DetectionLevel;
+  levelName: string;
+  badgeLabel: string;
+  title: string;
+  statusText: string;
+  advisory: string;
+  completionStatus: string;
+  colorScheme: 'green' | 'amber' | 'red';
+  hexColor: string;
+}
+
 export interface ScanResult {
   scan_id?: string;
   url: string;
   prediction: Verdict;
+  verdict?: string;
   risk_score: number;
+  riskScore?: number;
   risk_level?: string;
   threat_level?: string;
+  detection_level?: DetectionLevel;
+  level_name?: string;
+  bilstm_score?: number;
+  cnn_score?: number;
+  ensemble_score?: number;
   confidence: number;
   inference_time_ms?: number;
   ssl?: boolean;
+  ssl_status?: string;
+  ssl_detail?: Record<string, any>;
   domain_age?: string;
+  domain_age_days?: number | null;
   redirects?: number;
+  redirect_chain?: string[];
+  redirect_status?: string;
   blacklisted?: boolean;
+  blacklist_status?: string;
+  blacklist_detail?: Record<string, any>;
   whois?: WhoisInfo;
   reason?: string;
   signals: Signal[];
@@ -58,15 +86,27 @@ export interface ScanResult {
   scanned_at?: string;
   timestamp?: string;
   method?: string;
+  source?: string;
 }
 
 export interface HistoryEntry {
   id: number;
   url: string;
+  domain?: string;
   prediction: Verdict;
+  status?: string;
   risk_score: number;
+  threat_score?: number;
   confidence: number;
+  reason?: string;
+  model_prediction?: string;
+  source?: string;
   scanned_at: string;
+  created_at?: string;
+  detection_level?: DetectionLevel;
+  level_name?: string;
+  risk_level?: string;
+  threat_level?: string;
 }
 
 export interface Statistics {

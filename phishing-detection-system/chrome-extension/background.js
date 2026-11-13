@@ -31,7 +31,17 @@ function normalizeUrl(url) {
   if (self.PhishGuardNormalizer && self.PhishGuardNormalizer.normalizeUrlForComparison) {
     return self.PhishGuardNormalizer.normalizeUrlForComparison(url);
   }
-  return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim().toLowerCase();
+  const withProto = (trimmed.startsWith('http://') || trimmed.startsWith('https://')) ? trimmed : 'https://' + trimmed;
+  try {
+    const u = new URL(withProto);
+    const host = u.hostname.replace(/^www\./, '');
+    const pathname = (u.pathname || '').replace(/\/+$/, '');
+    return host + (pathname ? pathname : '');
+  } catch (e) {
+    return trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+  }
 }
 
 // ── ACTION BADGE & TOOLTIP SCANNING STATUS ──────────────────────────────────
@@ -294,6 +304,23 @@ async function sendOrInjectResultBanner(tabId, scanState) {
   }
 }
 
+function dispatchScanResultUI(tabId, scanState) {
+  if (!tabId || !scanState) return;
+  const verdict = scanState.verdict ? String(scanState.verdict).toUpperCase() : '';
+  const threatLevel = scanState.threatLevel ? String(scanState.threatLevel).toUpperCase() : (scanState.threat_level ? String(scanState.threat_level).toUpperCase() : '');
+  const riskScore = scanState.riskScore !== undefined ? scanState.riskScore : (scanState.risk_score || 0);
+
+  const isDangerous = verdict === 'PHISHING' || verdict === 'MALICIOUS' || threatLevel === 'CRITICAL' || threatLevel === 'HIGH' || riskScore >= 70.0;
+
+  if (isDangerous) {
+    console.log(`[PhishGuard] Dispatching LEVEL 3 DANGER OVERLAY to Tab ${tabId} (Risk: ${riskScore}%, Verdict: ${verdict})`);
+    sendOrInjectWarning(tabId, scanState);
+  } else {
+    console.log(`[PhishGuard] Dispatching LEVEL 1/2 RESULT BANNER to Tab ${tabId} (Risk: ${riskScore}%, Verdict: ${verdict})`);
+    sendOrInjectResultBanner(tabId, scanState);
+  }
+}
+
 // ── REAL-TIME DEEP LEARNING SCAN EXECUTION ─────────────────────────────────
 
 async function performScan(tabId, url, triggerSource = 'nav') {
@@ -305,16 +332,16 @@ async function performScan(tabId, url, triggerSource = 'nav') {
   const existingState = scanStates.get(tabId);
   const existingNormUrl = existingState && existingState.url ? normalizeUrl(existingState.url) : '';
 
-  if (existingState && existingState.status === 'SUCCESS' && normUrl === existingNormUrl && triggerSource !== 'manual') {
+  if (existingState && existingState.status === 'SUCCESS' && normUrl === existingNormUrl && triggerSource !== 'manual' && triggerSource !== 'spa_change') {
     console.log(`[PhishGuard] EXISTING_SUCCESS_PRESERVED Tab ${tabId} | URL: ${url}`);
-    sendOrInjectResultBanner(tabId, existingState);
+    dispatchScanResultUI(tabId, existingState);
     return;
   }
 
-  if (isDuplicateNavigation(tabId, url) && triggerSource !== 'manual') {
+  if (isDuplicateNavigation(tabId, url) && triggerSource !== 'manual' && triggerSource !== 'spa_change') {
     console.log(`[PhishGuard] SCAN_DUP_IGNORED Tab ${tabId} | URL: ${url}`);
     if (existingState && existingState.status === 'SUCCESS') {
-      sendOrInjectResultBanner(tabId, existingState);
+      dispatchScanResultUI(tabId, existingState);
     }
     return;
   }
@@ -432,7 +459,7 @@ async function performScan(tabId, url, triggerSource = 'nav') {
     } catch (nErr) {}
 
     // 3. AUTOMATICALLY TRIGGER RESULT UI FOR SCAN RESULT
-    sendOrInjectResultBanner(tabId, scan);
+    dispatchScanResultUI(tabId, scan);
 
   } catch (error) {
     console.error(`[PhishGuard] SCAN_ERROR Tab ${tabId}:`, error.message);

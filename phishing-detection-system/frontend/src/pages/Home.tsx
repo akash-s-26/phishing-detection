@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,23 +15,38 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUrl, setLastUrl] = useState('');
+  const activeUrlRef = useRef<string>('');
 
   async function handleScan(url: string) {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+
+    activeUrlRef.current = trimmed;
     setIsLoading(true);
     setError(null);
-    setLastUrl(url);
+    setResult(null); // Clear previous result immediately
+    setLastUrl(trimmed);
+
     try {
-      const data = await scanUrl(url);
+      const data = await scanUrl(trimmed);
+      // Prevent stale asynchronous responses from overwriting newer scans
+      if (activeUrlRef.current !== trimmed) {
+        return;
+      }
       setResult(data);
       const pred = (data.prediction || 'safe').toLowerCase();
       if (pred === 'phishing') toast.error('Phishing Threat Detected!');
       else if (pred === 'suspicious' || pred === 'medium') toast.warning('Suspicious URL Indicators Detected');
       else toast.success('URL Analyzed Clean — Site is Safe');
     } catch (err) {
-      setError(getApiErrorMessage(err));
-      setResult(null);
+      if (activeUrlRef.current === trimmed) {
+        setError(getApiErrorMessage(err));
+        setResult(null);
+      }
     } finally {
-      setIsLoading(false);
+      if (activeUrlRef.current === trimmed) {
+        setIsLoading(false);
+      }
     }
   }
 

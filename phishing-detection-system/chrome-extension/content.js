@@ -50,7 +50,17 @@
     if (window.PhishGuardNormalizer && window.PhishGuardNormalizer.normalizeUrlForComparison) {
       return window.PhishGuardNormalizer.normalizeUrlForComparison(url);
     }
-    return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+    if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim().toLowerCase();
+    const withProto = (trimmed.startsWith('http://') || trimmed.startsWith('https://')) ? trimmed : 'https://' + trimmed;
+    try {
+      const u = new URL(withProto);
+      const host = u.hostname.replace(/^www\./, '');
+      const pathname = (u.pathname || '').replace(/\/+$/, '');
+      return host + (pathname ? pathname : '');
+    } catch (e) {
+      return trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+    }
   }
 
   // ── OBSOLETE & LEGACY UI CLEANUP ──────────────────────────────────────────
@@ -113,7 +123,14 @@
     // Resolve 3-Level Security Classification
     const level = window.PhishGuardNormalizer
       ? window.PhishGuardNormalizer.resolveSecurityLevel(data)
-      : (data.verdict === 'PHISHING' || (data.riskScore && data.riskScore >= 70.0) ? 'DANGEROUS' : (data.verdict === 'SUSPICIOUS' || (data.riskScore && data.riskScore >= 40.0) ? 'SUSPICIOUS' : 'SAFE'));
+      : (() => {
+          const score = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score || 0);
+          const v = String(data.verdict || data.prediction || '').toUpperCase();
+          const t = String(data.threatLevel || data.threat_level || '').toUpperCase();
+          if (v === 'PHISHING' || v === 'MALICIOUS' || t === 'CRITICAL' || t === 'HIGH' || score >= 70.0) return 'DANGEROUS';
+          if (v === 'SUSPICIOUS' || t === 'MEDIUM' || score > 30.0) return 'SUSPICIOUS';
+          return 'SAFE';
+        })();
 
     if (level === 'DANGEROUS') {
       // Check if user clicked "Continue Anyway" on this scan/URL
@@ -144,7 +161,7 @@
     let themeBorder = 'rgba(16, 185, 129, 0.35)';
     let iconSymbol = '✓';
     let titleText = 'Safe Website';
-    let subMessage = 'Protected by PhishGuard AI';
+    let subMessage = data.reason || 'Verified safe — URL structure and domain records match legitimate patterns.';
     let threatText = `${scoreVal}% Threat`;
     let actionText = '';
 
@@ -156,7 +173,16 @@
       titleText = 'Suspicious Website';
       threatText = `${scoreVal}% Threat`;
       actionText = 'Proceed with caution';
-      subMessage = 'Protected by PhishGuard AI';
+
+      // Extract actual threat explanation from backend dynamic reason or signals
+      if (data.reason) {
+        subMessage = data.reason;
+      } else if (Array.isArray(data.signals) && data.signals.length > 0) {
+        const topSignal = data.signals.find(s => s.severity === 'medium' || s.severity === 'high' || s.severity === 'critical') || data.signals[0];
+        subMessage = topSignal.description || topSignal.signal || 'Suspicious URL characteristics detected';
+      } else {
+        subMessage = 'Suspicious URL pattern detected by AI model';
+      }
     }
 
     // Extract domain for display
@@ -170,19 +196,25 @@
       }
     }
 
+    const targetParent = document.documentElement || document.body;
+    const hostStyleCss = 'all: initial !important; position: fixed !important; right: 20px !important; bottom: 20px !important; left: auto !important; top: auto !important; z-index: 2147483647 !important; pointer-events: none !important; width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; display: block !important; transform: none !important; filter: none !important; perspective: none !important; contain: none !important;';
+
     // Check if host already exists for single-element update
     notificationHost = document.getElementById('phishguard-security-notification');
     if (!notificationHost) {
       notificationHost = document.createElement('div');
       notificationHost.id = 'phishguard-security-notification';
-      notificationHost.style.cssText = 'all: initial !important; position: fixed !important; right: 20px !important; bottom: 20px !important; z-index: 2147483647 !important; pointer-events: none !important; width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; display: block !important;';
+      notificationHost.style.cssText = hostStyleCss;
       notificationRoot = notificationHost.attachShadow({ mode: 'open' });
 
-      const targetParent = document.body || document.documentElement;
       if (targetParent) {
         targetParent.appendChild(notificationHost);
       }
     } else {
+      notificationHost.style.cssText = hostStyleCss;
+      if (targetParent && notificationHost.parentNode !== targetParent) {
+        targetParent.appendChild(notificationHost);
+      }
       notificationRoot = notificationHost.shadowRoot || notificationHost.attachShadow({ mode: 'open' });
     }
 
@@ -190,7 +222,26 @@
       <style>
         :host {
           all: initial !important;
+          position: fixed !important;
+          right: 20px !important;
+          bottom: 20px !important;
+          left: auto !important;
+          top: auto !important;
+          z-index: 2147483647 !important;
+          pointer-events: none !important;
+          width: auto !important;
+          height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          display: block !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        }
+        @media (max-width: 480px) {
+          :host {
+            right: 12px !important;
+            bottom: 12px !important;
+            left: auto !important;
+          }
         }
         .security-banner-container {
           pointer-events: auto !important;
@@ -342,9 +393,11 @@
 
         <div class="details-drawer" id="details-drawer">
           <div class="details-grid">
+            <div>SSL: <strong>${escapeHTML(data.ssl_status || data.sslStatus || (data.ssl ? 'Valid SSL' : 'Missing SSL'))}</strong></div>
+            <div>Domain Age: <strong>${escapeHTML(data.domain_age || data.domainAge || 'Unable to verify')}</strong></div>
+            <div>Redirects: <strong>${escapeHTML(data.redirect_status || data.redirectStatus || (data.redirects || 0) + ' redirects')}</strong></div>
+            <div>Blacklist: <strong>${escapeHTML(data.blacklist_status || data.blacklistStatus || (data.blacklisted ? 'Listed' : 'Clean'))}</strong></div>
             <div>Model: <strong>${escapeHTML(data.modelDisplay || 'DL Ensemble')}</strong></div>
-            <div>Latency: <strong>${data.inferenceTimeMs ? data.inferenceTimeMs + 'ms' : 'Fast'}</strong></div>
-            <div>Risk Score: <strong>${scoreVal}/100</strong></div>
             <div>Confidence: <strong>${data.confidence ?? 99}%</strong></div>
           </div>
         </div>
@@ -381,28 +434,33 @@
 
   // ── LEVEL 3: FULL-SCREEN DANGEROUS OVERLAY ────────────────────────────────
   function renderLevel3DangerOverlay(data) {
-    const scoreVal = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score || 92);
-    const confidenceVal = data.confidence ?? 99.0;
-    const threatLevelStr = escapeHTML(data.threatLevel || 'HIGH');
+    const rawScore = data.riskScore !== null && data.riskScore !== undefined ? data.riskScore : (data.risk_score !== null && data.risk_score !== undefined ? data.risk_score : null);
+    const scoreVal = rawScore !== null ? Math.round(rawScore) : 88;
+    const confidenceVal = (data.confidence !== null && data.confidence !== undefined) ? data.confidence : 98.5;
+    const threatLevelStr = escapeHTML(data.threatLevel || data.threat_level || 'CRITICAL');
 
+    const targetParent = document.documentElement || document.body;
     dangerOverlayHost = document.getElementById('phishguard-danger-overlay');
     if (!dangerOverlayHost) {
       dangerOverlayHost = document.createElement('div');
       dangerOverlayHost.id = 'phishguard-danger-overlay';
-      dangerOverlayHost.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; pointer-events: auto !important; margin: 0 !important; padding: 0 !important; display: block !important;';
+      dangerOverlayHost.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; pointer-events: auto !important; margin: 0 !important; padding: 0 !important; display: block !important; transform: none !important; filter: none !important; perspective: none !important; contain: none !important;';
       dangerOverlayRoot = dangerOverlayHost.attachShadow({ mode: 'open' });
 
-      const targetParent = document.body || document.documentElement;
       if (targetParent) {
         targetParent.appendChild(dangerOverlayHost);
       }
     } else {
+      dangerOverlayHost.style.cssText = 'all: initial !important; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; pointer-events: auto !important; margin: 0 !important; padding: 0 !important; display: block !important; transform: none !important; filter: none !important; perspective: none !important; contain: none !important;';
+      if (targetParent && dangerOverlayHost.parentNode !== targetParent) {
+        targetParent.appendChild(dangerOverlayHost);
+      }
       dangerOverlayRoot = dangerOverlayHost.shadowRoot || dangerOverlayHost.attachShadow({ mode: 'open' });
     }
 
     const modalLogoUrl = safeGetURL('icons/icon128.png');
     const modalImgTag = modalLogoUrl
-      ? `<img src="${escapeHTML(modalLogoUrl)}" class="shield-icon-img" alt="PhishGuard Shield">`
+      ? `<img src="${escapeHTML(modalLogoUrl)}" class="shield-icon-img" alt="PhishGuard Shield" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';"><span style="display:none;font-size:72px;">🛡️</span>`
       : `<span style="font-size:72px;">🛡️</span>`;
 
     const htmlContent = `
@@ -559,7 +617,7 @@
           </div>
           <h1 class="title">DANGEROUS WEBSITE</h1>
           <p class="description">
-            This website may be dangerous. PhishGuard AI detected potentially malicious activity.
+            ${escapeHTML(data.reason || 'CRITICAL WARNING: PhishGuard AI deep neural ensemble detected high-confidence phishing indicators. Do NOT enter passwords, banking credentials, or personal information.')}
           </p>
 
           <div class="url-box">${escapeHTML(data.url)}</div>
@@ -576,6 +634,25 @@
             <div class="metric-box">
               <div class="metric-val" style="color:#ef4444;">${threatLevelStr}</div>
               <div class="metric-lbl">Threat Level</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;font-size:11px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px;text-align:center;">
+            <div>
+              <div style="color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">SSL Status</div>
+              <div style="color:${(data.ssl_status === 'Valid SSL' || data.ssl) ? '#10b981' : '#ef4444'};font-weight:700;margin-top:2px;">${escapeHTML(data.ssl_status || data.sslStatus || (data.ssl ? 'Valid SSL' : 'Missing SSL'))}</div>
+            </div>
+            <div>
+              <div style="color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">Domain Age</div>
+              <div style="color:#e2e8f0;font-weight:700;margin-top:2px;">${escapeHTML(data.domain_age || data.domainAge || 'Unable to verify')}</div>
+            </div>
+            <div>
+              <div style="color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">Redirects</div>
+              <div style="color:#e2e8f0;font-weight:700;margin-top:2px;">${escapeHTML(data.redirect_status || data.redirectStatus || (data.redirects || 0) + ' redirects')}</div>
+            </div>
+            <div>
+              <div style="color:#64748b;font-weight:700;text-transform:uppercase;font-size:10px;">Blacklist</div>
+              <div style="color:${(data.blacklist_status === 'Listed' || data.blacklisted) ? '#ef4444' : '#10b981'};font-weight:700;margin-top:2px;">${escapeHTML(data.blacklist_status || data.blacklistStatus || (data.blacklisted ? 'Listed' : 'Clean'))}</div>
             </div>
           </div>
 

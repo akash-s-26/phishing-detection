@@ -9,6 +9,7 @@ import { DistributionChart } from '@/components/charts/DistributionChart';
 import { fetchStatistics, fetchHistory } from '@/services/scanService';
 import { useExtensionStatus } from '@/hooks/useExtensionStatus';
 import { formatDate, cn } from '@/utils/cn';
+import { resolveDetectionLevel } from '@/utils/securityLevels';
 
 export default function Dashboard() {
   const [statsData, setStatsData] = useState<any>(null);
@@ -47,7 +48,15 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const downloadUrl = 'http://localhost:5000/download-extension';
+  const handleDownloadExtension = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const link = document.createElement('a');
+    link.href = '/phishguard-ai-extension.zip';
+    link.download = 'phishguard-ai-extension.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10 space-y-8">
@@ -71,9 +80,10 @@ export default function Dashboard() {
           </button>
 
           <a
-            href={downloadUrl}
+            href="/phishguard-ai-extension.zip"
             download="phishguard-ai-extension.zip"
-            className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition shadow-[0_0_15px_rgba(56,189,248,0.15)]"
+            onClick={handleDownloadExtension}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition shadow-[0_0_15px_rgba(56,189,248,0.15)] cursor-pointer"
           >
             <Download className="h-3.5 w-3.5" />
             Download Extension
@@ -166,8 +176,16 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1.5">
-              <div className="font-bold text-cyan-400">Step 1: Download Package</div>
-              <p className="text-slate-300">Click the Download button to save <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">phishguard-ai-extension.zip</code> to your computer and unzip it.</p>
+              <div className="font-bold text-cyan-400 flex items-center justify-between">
+                <span>Step 1: Download Package</span>
+                <button
+                  onClick={handleDownloadExtension}
+                  className="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/40 hover:bg-cyan-500/30 font-bold"
+                >
+                  Download Now
+                </button>
+              </div>
+              <p className="text-slate-300">Click <button onClick={handleDownloadExtension} className="text-cyan-400 underline font-bold">Download Now</button> to save <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">phishguard-ai-extension.zip</code> to your computer and unzip it.</p>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1.5">
               <div className="font-bold text-cyan-400">Step 2: Open Extensions</div>
@@ -247,25 +265,52 @@ export default function Dashboard() {
                     No scans logged yet. Perform a scan or browse with the Chrome Extension.
                   </li>
                 )}
-                {historyData.map((entry) => (
-                  <li key={entry.id || entry.scanned_at} className="flex items-center justify-between gap-3 py-3">
-                    <div className="flex flex-col min-w-0">
-                      <span className="truncate font-mono text-xs text-slate-200 max-w-[280px]" title={entry.url}>
-                        {entry.url}
-                      </span>
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded">{entry.source || 'Chrome Extension'}</span>
-                        <span>•</span>
-                        <span>{entry.reason || `Risk: ${entry.risk_score}%`}</span>
-                      </span>
-                    </div>
+                {historyData.map((entry) => {
+                  const lvl = resolveDetectionLevel(
+                    entry.risk_score,
+                    entry.prediction,
+                    entry.threat_level,
+                    entry.detection_level
+                  );
+                  const lvlBadgeClass =
+                    lvl.level === 1
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                      : lvl.level === 2
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                      : 'bg-rose-500/20 border-rose-500/40 text-rose-300';
 
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Badge verdict={entry.prediction}>{entry.prediction}</Badge>
-                      <span className="text-[11px] font-mono text-slate-500">{formatDate(entry.scanned_at)}</span>
-                    </div>
-                  </li>
-                ))}
+                  return (
+                    <li
+                      key={entry.id || entry.scanned_at}
+                      className="flex items-center justify-between gap-3 py-3 hover:bg-white/[0.02] px-2 rounded-lg transition"
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="truncate font-mono text-xs text-slate-200 max-w-[280px]" title={entry.url}>
+                          {entry.url}
+                        </span>
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded font-mono">
+                            {entry.source || 'Web App'}
+                          </span>
+                          <span>•</span>
+                          <span className="font-mono text-slate-300">Threat Score: {entry.risk_score}%</span>
+                        </span>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${lvlBadgeClass}`}
+                        >
+                          {lvl.levelName}
+                        </span>
+                        <Badge verdict={entry.prediction}>{entry.prediction}</Badge>
+                        <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">
+                          {formatDate(entry.scanned_at)}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

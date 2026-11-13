@@ -32,7 +32,10 @@ def predict_batched(model, seqs, nums, device, batch_size=1024):
 def evaluate_all():
     base_dir = os.path.dirname(__file__)
     data_path = os.path.join(base_dir, 'processed_data', 'dataset_splits.npz')
-    models_dir = os.path.join(base_dir, '..', 'models')
+    models_dir = os.path.join(base_dir, '..', 'backend','models')
+    print("Models directory:", models_dir)
+    print("Directory exists:", os.path.isdir(models_dir))
+    print("Model files:", os.listdir(models_dir) if os.path.isdir(models_dir) else "NOT FOUND")
     results_dir = os.path.join(base_dir, 'results')
     os.makedirs(results_dir, exist_ok=True)
 

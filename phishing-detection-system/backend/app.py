@@ -15,6 +15,7 @@ import sqlite3
 import datetime
 import logging
 import re
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -43,6 +44,7 @@ if not os.path.exists(ML_DIR):
 sys.path.insert(0, ML_DIR)
 
 from feature_extraction import extract_features, features_to_normalized_vector, get_detection_signals, normalize_url
+from enrichment import enrich
 
 MODEL_VERSION = 'RNN-GAN-DL-v2.0'
 MAX_SEQ_LEN = 150
@@ -92,7 +94,18 @@ class BiLSTMPhishingRNN(nn.Module):
         seq_representation = torch.max(lstm_out, dim=1)[0]
         combined = torch.cat([seq_representation, x_num], dim=1)
         out = self.dropout(self.relu(self.fc1(combined)))
-        return self.sigmoid(self.fc2(out))
+        logit = self.fc2(out)
+        return self.sigmoid(logit)
+
+    def forward_with_logit(self, x_seq, x_num):
+        embeds = self.embedding(x_seq)
+        lstm_out, _ = self.bilstm(embeds)
+        seq_representation = torch.max(lstm_out, dim=1)[0]
+        combined = torch.cat([seq_representation, x_num], dim=1)
+        out = self.dropout(self.relu(self.fc1(combined)))
+        logit = self.fc2(out)
+        prob = self.sigmoid(logit)
+        return prob, logit
 
 
 class CNNPhishing1D(nn.Module):
@@ -117,7 +130,37 @@ class CNNPhishing1D(nn.Module):
         c2 = self.global_pool(self.relu2(self.conv2(c1))).squeeze(2)
         combined = torch.cat([c2, x_num], dim=1)
         out = self.dropout(self.relu3(self.fc1(combined)))
-        return self.sigmoid(self.fc2(out))
+        logit = self.fc2(out)
+        return self.sigmoid(logit)
+
+    def forward_with_logit(self, x_seq, x_num):
+        embeds = self.embedding(x_seq).transpose(1, 2)
+        c1 = self.pool1(self.relu1(self.conv1(embeds)))
+        c2 = self.global_pool(self.relu2(self.conv2(c1))).squeeze(2)
+        combined = torch.cat([c2, x_num], dim=1)
+        out = self.dropout(self.relu3(self.fc1(combined)))
+        logit = self.fc2(out)
+        prob = self.sigmoid(logit)
+        return prob, logit
+
+def calibrate_model_score(logit: float, raw_prob: float) -> float:
+    """
+    Calibrate raw deep learning model output into a continuous 0.0 - 99.0 risk score.
+    Avoids saturated probability flat-lining at 100% while strictly preserving model ordering:
+    - If logit <= 0 (legitimate territory): maps raw sigmoid prob (0.0 - 50.0%)
+    - If logit > 0 (phishing territory): uses smooth hyperbolic tangent scaling:
+      50.0 + 48.0 * tanh(logit / 18.0) -> dynamic range [50.1%, 98.5%]
+    """
+    if logit is None or not math.isfinite(logit):
+        if raw_prob is not None and math.isfinite(raw_prob):
+            return min(99.0, max(0.0, raw_prob * 100.0))
+        return 50.0
+    if logit <= 0.0:
+        prob = raw_prob if (raw_prob is not None and math.isfinite(raw_prob)) else (1.0 / (1.0 + math.exp(-logit)))
+        return max(0.0, min(50.0, prob * 100.0))
+    scale = math.tanh(logit / 18.0)
+    score = 50.0 + 48.0 * scale
+    return max(50.1, min(99.0, score))
 
 # ─── Load Production Deep Learning Artifacts & Warm-up ─────────────────────
 
@@ -328,20 +371,34 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
     # 2. BiLSTM RNN Inference Timing
     t_rnn_start = time.time()
     rnn_prob = 0.50
+    rnn_logit = 0.0
     rnn_exec = False
     if RNN_MODEL is not None:
         with torch.no_grad():
-            rnn_prob = float(RNN_MODEL(t_seq, t_num).item())
+            if hasattr(RNN_MODEL, 'forward_with_logit'):
+                p_t, l_t = RNN_MODEL.forward_with_logit(t_seq, t_num)
+                rnn_prob = float(p_t.item())
+                rnn_logit = float(l_t.item())
+            else:
+                rnn_prob = float(RNN_MODEL(t_seq, t_num).item())
+                rnn_logit = float(math.log(max(1e-7, rnn_prob) / max(1e-7, 1.0 - rnn_prob)))
             rnn_exec = True
     rnn_inference_ms = round((time.time() - t_rnn_start) * 1000, 2)
 
     # 3. 1D CNN Inference Timing
     t_cnn_start = time.time()
     cnn_prob = 0.50
+    cnn_logit = 0.0
     cnn_exec = False
     if CNN_MODEL is not None:
         with torch.no_grad():
-            cnn_prob = float(CNN_MODEL(t_seq, t_num).item())
+            if hasattr(CNN_MODEL, 'forward_with_logit'):
+                p_t, l_t = CNN_MODEL.forward_with_logit(t_seq, t_num)
+                cnn_prob = float(p_t.item())
+                cnn_logit = float(l_t.item())
+            else:
+                cnn_prob = float(CNN_MODEL(t_seq, t_num).item())
+                cnn_logit = float(math.log(max(1e-7, cnn_prob) / max(1e-7, 1.0 - cnn_prob)))
             cnn_exec = True
     cnn_inference_ms = round((time.time() - t_cnn_start) * 1000, 2)
 
@@ -370,36 +427,50 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
         domain_prob = float(0.55 * rnn_prob + 0.45 * cnn_prob)
     domain_calibration_ms = round((time.time() - t_dom_start) * 1000, 2)
 
-    # 5. Deep Learning Weighted Fusion Ensemble
+    # 5. Deep Learning Calibrated Model Scores
+    bilstm_score = round(calibrate_model_score(rnn_logit, rnn_prob), 1) if rnn_exec else 50.0
+    cnn_score = round(calibrate_model_score(cnn_logit, cnn_prob), 1) if cnn_exec else 50.0
+
+    # Weighted Fusion Ensemble (Preserving exact project weights: 0.55 * BiLSTM + 0.45 * CNN)
     if rnn_exec and cnn_exec:
+        raw_final_score = (0.55 * bilstm_score) + (0.45 * cnn_score)
         raw_ensemble_prob = float(0.55 * rnn_prob + 0.45 * cnn_prob)
     elif rnn_exec:
+        raw_final_score = bilstm_score
         raw_ensemble_prob = rnn_prob
     else:
+        raw_final_score = cnn_score
         raw_ensemble_prob = cnn_prob
 
     threat_signals = [s for s in signals if s.get('severity') in ('medium', 'high', 'critical')]
     if domain_prob < 0.10 and len(threat_signals) == 0:
         ensemble_prob = float(0.85 * domain_prob + 0.15 * raw_ensemble_prob)
+        risk_score = round(min(raw_final_score, max(0.1, ensemble_prob * 100.0)), 1)
     else:
         ensemble_prob = raw_ensemble_prob
-
-    risk_score = round(ensemble_prob * 100.0, 1)
+        risk_score = round(min(99.0, raw_final_score), 1)
 
     if risk_score <= 30.0:
         verdict = 'SAFE'
         prediction = 'Safe'
         threat_level = 'LOW'
+        detection_level = 1
+        level_name = 'Level 1 – Low Risk'
     elif risk_score <= 70.0:
         verdict = 'SUSPICIOUS'
         prediction = 'Suspicious'
         threat_level = 'MEDIUM'
+        detection_level = 2
+        level_name = 'Level 2 – Medium Risk'
     else:
         verdict = 'PHISHING'
         prediction = 'Phishing'
         threat_level = 'CRITICAL'
+        detection_level = 3
+        level_name = 'Level 3 – High Risk'
 
-    confidence = round(float(max(ensemble_prob, 1.0 - ensemble_prob)) * 100.0, 1)
+    # Calibrated confidence (handling missing/extreme probability safely, never defaulting to 100)
+    confidence = round(min(99.8, max(50.0, 50.0 + 49.5 * (abs(risk_score - 50.0) / 50.0))), 1)
     total_ms = round((time.time() - t_start) * 1000, 2)
 
     telemetry = {
@@ -411,10 +482,38 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
     }
 
     logging.info(
-        f"[PhishGuard Performance] Preproc: {preprocessing_ms}ms | RNN: {rnn_inference_ms}ms | "
-        f"CNN: {cnn_inference_ms}ms | Domain: {domain_calibration_ms}ms | Total: {total_ms}ms | "
-        f"Risk: {risk_score}% ({verdict})"
+        f"[PhishGuard Performance] Preproc: {preprocessing_ms}ms | RNN: {rnn_inference_ms}ms (Score: {bilstm_score}%) | "
+        f"CNN: {cnn_inference_ms}ms (Score: {cnn_score}%) | Domain: {domain_calibration_ms}ms | Total: {total_ms}ms | "
+        f"Risk: {risk_score}% ({verdict}) | Level: {detection_level}"
     )
+
+    # 6. Real-Time Dynamic Security Intelligence & Explanation
+    try:
+        enrichment_data = enrich(
+            url=norm_url,
+            features=features,
+            signals=signals,
+            prediction=prediction,
+            risk_score=risk_score,
+            detection_level=detection_level
+        )
+    except Exception as enrich_err:
+        logging.warning(f"[PhishGuard] Enrichment error for {norm_url}: {enrich_err}")
+        enrichment_data = {
+            'ssl': bool(features.get('has_https', 0)),
+            'ssl_status': 'Valid SSL' if features.get('has_https') else 'Missing SSL',
+            'ssl_detail': {},
+            'domain_age': 'Unable to verify',
+            'domain_age_days': None,
+            'redirects': 0,
+            'redirect_chain': [norm_url],
+            'redirect_status': '0 redirects (Direct)',
+            'blacklisted': False,
+            'blacklist_status': 'Unable to verify',
+            'blacklist_detail': {},
+            'whois': {'registrar': 'Unable to verify', 'country': 'Unable to verify'},
+            'reason': f"URL evaluated as {level_name} with continuous risk score of {risk_score}%."
+        }
 
     return {
         'success': True,
@@ -424,9 +523,29 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
         'prediction_code': prediction.lower(),
         'verdict': verdict,
         'risk_score': risk_score,
+        'riskScore': risk_score,
+        'bilstm_score': bilstm_score,
+        'cnn_score': cnn_score,
+        'rnn_score': bilstm_score,
+        'ensemble_score': risk_score,
         'risk_level': prediction,
         'threat_level': threat_level,
+        'detection_level': detection_level,
+        'level_name': level_name,
         'confidence': confidence,
+        'reason': enrichment_data['reason'],
+        'ssl': enrichment_data['ssl'],
+        'ssl_status': enrichment_data['ssl_status'],
+        'ssl_detail': enrichment_data['ssl_detail'],
+        'domain_age': enrichment_data['domain_age'],
+        'domain_age_days': enrichment_data['domain_age_days'],
+        'redirects': enrichment_data['redirects'],
+        'redirect_chain': enrichment_data['redirect_chain'],
+        'redirect_status': enrichment_data['redirect_status'],
+        'blacklisted': enrichment_data['blacklisted'],
+        'blacklist_status': enrichment_data['blacklist_status'],
+        'blacklist_detail': enrichment_data['blacklist_detail'],
+        'whois': enrichment_data['whois'],
         'model': {
             'name': 'DL-CNN-BiLSTM (GAN Ensembled)',
             'architecture': 'BiLSTM + 1D CNN',
@@ -437,6 +556,9 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
             'gan_executed': True,
             'rnn_probability': round(rnn_prob, 4),
             'cnn_probability': round(cnn_prob, 4),
+            'bilstm_score': bilstm_score,
+            'cnn_score': cnn_score,
+            'ensemble_score': risk_score,
             'ensemble_probability': round(ensemble_prob, 4),
             'inference_time_ms': total_ms
         },
@@ -445,6 +567,9 @@ def dl_predict(url: str, scan_id: str = None) -> dict:
         'analysis': {
             'rnn_probability': round(rnn_prob, 4),
             'cnn_probability': round(cnn_prob, 4),
+            'bilstm_score': bilstm_score,
+            'cnn_score': cnn_score,
+            'ensemble_score': risk_score,
             'ensemble_probability': round(ensemble_prob, 4)
         },
         'signals': signals,
@@ -510,7 +635,9 @@ def predict():
         return jsonify({'error': 'URL cannot be empty', 'error_code': 'BAD_REQUEST'}), 400
 
     scan_id = data.get('scan_id')
-    source = data.get('source', 'Chrome Extension')
+    source = data.get('source')
+    if not source:
+        source = 'Chrome Extension' if data.get('tab_id') is not None else 'Web App'
 
     try:
         res = dl_predict(raw_url, scan_id=scan_id)
@@ -524,7 +651,7 @@ def predict():
             confidence=res['confidence'],
             user_id=user_id,
             source=source,
-            reason=primary_signal,
+            reason=res.get('reason') or primary_signal,
             model_pred=model_name
         )
         return jsonify(res), 200
@@ -552,6 +679,7 @@ def history():
     result_filter = request.args.get('result') or request.args.get('status')
     search = request.args.get('search')
     source_filter = request.args.get('source')
+    level_filter = request.args.get('level', type=int)
     user_id = _optional_user_id()
 
     offset = (page - 1) * limit
@@ -565,6 +693,12 @@ def history():
     if result_filter and result_filter.lower() != 'all':
         query += ' AND LOWER(prediction) = LOWER(?)'
         params.append(result_filter)
+    if level_filter == 1:
+        query += ' AND risk_score <= 30.0'
+    elif level_filter == 2:
+        query += ' AND risk_score > 30.0 AND risk_score <= 70.0'
+    elif level_filter == 3:
+        query += ' AND risk_score > 70.0'
     if search:
         query += ' AND (url LIKE ? OR domain LIKE ?)'
         params.append(f'%{search}%')
@@ -588,32 +722,63 @@ def history():
         if result_filter and result_filter.lower() != 'all':
             count_query += ' AND LOWER(prediction) = LOWER(?)'
             count_params.append(result_filter)
+        if level_filter == 1:
+            count_query += ' AND risk_score <= 30.0'
+        elif level_filter == 2:
+            count_query += ' AND risk_score > 30.0 AND risk_score <= 70.0'
+        elif level_filter == 3:
+            count_query += ' AND risk_score > 70.0'
         if search:
             count_query += ' AND (url LIKE ? OR domain LIKE ?)'
             count_params.append(f'%{search}%')
             count_params.append(f'%{search}%')
+        if source_filter:
+            count_query += ' AND LOWER(source) = LOWER(?)'
+            count_params.append(source_filter)
 
         total_records = conn.execute(count_query, count_params).fetchone()[0]
         conn.close()
 
-        records = [
-            {
+        records = []
+        for r in rows:
+            r_pred = str(r[3]) if r[3] else 'Safe'
+            try:
+                r_score = float(r[4]) if r[4] is not None else 0.0
+            except (ValueError, TypeError):
+                r_score = 0.0
+
+            if r_score <= 30.0:
+                det_lvl = 1
+                det_lvl_name = 'Level 1 – Low Risk'
+                threat_lvl = 'LOW'
+            elif r_score <= 70.0:
+                det_lvl = 2
+                det_lvl_name = 'Level 2 – Medium Risk'
+                threat_lvl = 'MEDIUM'
+            else:
+                det_lvl = 3
+                det_lvl_name = 'Level 3 – High Risk'
+                threat_lvl = 'CRITICAL'
+
+            records.append({
                 'id': r[0],
                 'url': r[1],
                 'domain': r[2] or extract_domain_name(r[1]),
                 'prediction': r[3],
                 'status': r[3],
-                'risk_score': r[4],
-                'threat_score': r[4],
+                'risk_score': r_score,
+                'threat_score': r_score,
                 'confidence': r[5],
-                'reason': r[6] or f"Score: {r[4]}%",
+                'reason': r[6] or f"Threat Score: {r_score}%",
                 'model_prediction': r[7] or 'DL-CNN-BiLSTM',
-                'source': r[8] or 'Chrome Extension',
+                'source': r[8] or 'Web App',
                 'scanned_at': r[9],
-                'created_at': r[9]
-            }
-            for r in rows
-        ]
+                'created_at': r[9],
+                'detection_level': det_lvl,
+                'level_name': det_lvl_name,
+                'risk_level': r_pred,
+                'threat_level': threat_lvl
+            })
 
         return jsonify({
             'scans': records,
@@ -646,10 +811,30 @@ def statistics():
 
         # Recent 5 activity logs
         recent_rows = conn.execute(f"SELECT url, domain, prediction, risk_score, scanned_at {base} ORDER BY id DESC LIMIT 5", params).fetchall()
-        recent_activity = [
-            {'url': r[0], 'domain': r[1] or extract_domain_name(r[0]), 'verdict': r[2], 'risk_score': r[3], 'scanned_at': r[4]}
-            for r in recent_rows
-        ]
+        recent_activity = []
+        for r in recent_rows:
+            try:
+                r_score = float(r[3]) if r[3] is not None else 0.0
+            except (ValueError, TypeError):
+                r_score = 0.0
+            if r_score <= 30.0:
+                det_lvl = 1
+                det_lvl_name = 'Level 1 – Low Risk'
+            elif r_score <= 70.0:
+                det_lvl = 2
+                det_lvl_name = 'Level 2 – Medium Risk'
+            else:
+                det_lvl = 3
+                det_lvl_name = 'Level 3 – High Risk'
+            recent_activity.append({
+                'url': r[0],
+                'domain': r[1] or extract_domain_name(r[0]),
+                'verdict': r[2],
+                'risk_score': r_score,
+                'scanned_at': r[4],
+                'detection_level': det_lvl,
+                'level_name': det_lvl_name
+            })
 
         conn.close()
         return jsonify({

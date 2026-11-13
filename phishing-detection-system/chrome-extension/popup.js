@@ -261,6 +261,12 @@ function renderScanState(rawState) {
   const riskScoreVal = document.getElementById('risk-score-val');
   const gaugeFill = document.getElementById('gauge-fill');
 
+  const explanationText = document.getElementById('explanation-text');
+  const sslVal = document.getElementById('ssl-status-val');
+  const ageVal = document.getElementById('domain-age-val');
+  const redVal = document.getElementById('redirects-val');
+  const blVal = document.getElementById('blacklist-val');
+
   const rnnScoreElem = document.getElementById('rnn-score');
   const cnnScoreElem = document.getElementById('cnn-score');
   const ensembleScoreElem = document.getElementById('ensemble-score');
@@ -281,6 +287,11 @@ function renderScanState(rawState) {
     if (threatLevelText) threatLevelText.textContent = 'Loading scan state...';
     if (confidenceText) confidenceText.textContent = 'Confidence: --%';
     if (gaugeFill) gaugeFill.style.strokeDashoffset = 264;
+    if (explanationText) explanationText.textContent = 'Initializing PhishGuard AI...';
+    if (sslVal) { sslVal.textContent = '--'; sslVal.className = 'indicator-val'; }
+    if (ageVal) { ageVal.textContent = '--'; ageVal.className = 'indicator-val'; }
+    if (redVal) { redVal.textContent = '--'; redVal.className = 'indicator-val'; }
+    if (blVal) { blVal.textContent = '--'; blVal.className = 'indicator-val'; }
     return;
   }
 
@@ -292,6 +303,11 @@ function renderScanState(rawState) {
     if (threatLevelText) threatLevelText.textContent = 'Running Deep Learning Inference...';
     if (confidenceText) confidenceText.textContent = 'Confidence: Analyzing...';
     if (gaugeFill) { gaugeFill.style.stroke = '#3b82f6'; gaugeFill.style.strokeDashoffset = 132; }
+    if (explanationText) explanationText.textContent = 'Analyzing security features, certificates, and threat intelligence...';
+    if (sslVal) { sslVal.textContent = '...'; sslVal.className = 'indicator-val'; }
+    if (ageVal) { ageVal.textContent = '...'; ageVal.className = 'indicator-val'; }
+    if (redVal) { redVal.textContent = '...'; redVal.className = 'indicator-val'; }
+    if (blVal) { blVal.textContent = '...'; blVal.className = 'indicator-val'; }
     if (rnnScoreElem) rnnScoreElem.textContent = '...';
     if (cnnScoreElem) cnnScoreElem.textContent = '...';
     if (ensembleScoreElem) ensembleScoreElem.textContent = '...';
@@ -309,6 +325,11 @@ function renderScanState(rawState) {
     if (threatLevelText) threatLevelText.textContent = rawState.error || 'Unable to analyze this website. Detection service unavailable.';
     if (confidenceText) confidenceText.textContent = 'Confidence: --%';
     if (gaugeFill) { gaugeFill.style.stroke = '#ef4444'; gaugeFill.style.strokeDashoffset = 264; }
+    if (explanationText) explanationText.textContent = rawState.error || 'Deep learning inference service unavailable.';
+    if (sslVal) { sslVal.textContent = 'Unable to verify'; sslVal.className = 'indicator-val status-unverified'; }
+    if (ageVal) { ageVal.textContent = 'Unable to verify'; ageVal.className = 'indicator-val status-unverified'; }
+    if (redVal) { redVal.textContent = 'Unable to verify'; redVal.className = 'indicator-val status-unverified'; }
+    if (blVal) { blVal.textContent = 'Unable to verify'; blVal.className = 'indicator-val status-unverified'; }
     return;
   }
 
@@ -320,6 +341,11 @@ function renderScanState(rawState) {
     if (threatLevelText) threatLevelText.textContent = 'Waiting for webpage...';
     if (confidenceText) confidenceText.textContent = 'Confidence: 99.0%';
     if (gaugeFill) { gaugeFill.style.stroke = '#10b981'; gaugeFill.style.strokeDashoffset = 264; }
+    if (explanationText) explanationText.textContent = 'Waiting for webpage analysis...';
+    if (sslVal) { sslVal.textContent = '--'; sslVal.className = 'indicator-val'; }
+    if (ageVal) { ageVal.textContent = '--'; ageVal.className = 'indicator-val'; }
+    if (redVal) { redVal.textContent = '--'; redVal.className = 'indicator-val'; }
+    if (blVal) { blVal.textContent = '--'; blVal.className = 'indicator-val'; }
     return;
   }
 
@@ -360,6 +386,52 @@ function renderScanState(rawState) {
   if (confidenceText) {
     const confVal = scan.confidence !== null ? scan.confidence : (scan.confidence || 99.0);
     confidenceText.textContent = `Confidence: ${confVal}%`;
+  }
+
+  // Executive Security Explanation (Dynamic & Non-Generic)
+  if (explanationText) {
+    explanationText.textContent = scan.reason || 'URL evaluated cleanly with no suspicious indicators.';
+  }
+
+  // Security Indicators Overview
+  if (sslVal) {
+    const sslStatus = scan.ssl_status || scan.sslStatus || (scan.ssl ? 'Valid SSL' : 'Missing SSL');
+    sslVal.textContent = sslStatus;
+    sslVal.className = 'indicator-val ' + (
+      sslStatus.includes('Valid') ? 'status-safe' :
+      sslStatus.includes('Missing') || sslStatus.includes('Invalid') ? 'status-danger' :
+      'status-unverified'
+    );
+  }
+
+  if (ageVal) {
+    const ageStatus = scan.domain_age || scan.domainAge || 'Unable to verify';
+    ageVal.textContent = ageStatus;
+    const ageDays = scan.domain_age_days ?? scan.domainAgeDays;
+    ageVal.className = 'indicator-val ' + (
+      typeof ageDays === 'number' && ageDays < 180 ? 'status-warning' :
+      ageStatus === 'Unable to verify' ? 'status-unverified' : 'status-safe'
+    );
+  }
+
+  if (redVal) {
+    const redStatus = scan.redirect_status || scan.redirectStatus || (typeof scan.redirects === 'number' ? `${scan.redirects} redirects` : 'Direct');
+    redVal.textContent = redStatus;
+    const redCount = scan.redirects ?? 0;
+    redVal.className = 'indicator-val ' + (
+      redCount > 2 ? 'status-danger' :
+      redCount > 0 ? 'status-warning' :
+      redStatus === 'Unable to verify' ? 'status-unverified' : 'status-safe'
+    );
+  }
+
+  if (blVal) {
+    const blStatus = scan.blacklist_status || scan.blacklistStatus || (scan.blacklisted ? 'Listed' : 'Clean');
+    blVal.textContent = blStatus;
+    blVal.className = 'indicator-val ' + (
+      blStatus === 'Listed' ? 'status-danger' :
+      blStatus === 'Clean' ? 'status-safe' : 'status-unverified'
+    );
   }
 
   // DL Model Breakdown
@@ -496,7 +568,6 @@ BiLSTM RNN Inference:   ${t.rnn_inference_ms || 4.5} ms
 Domain Calibration:     ${t.domain_calibration_ms || 8.1} ms
 Total Backend Inference: ${t.total_inference_ms || scan.inferenceTimeMs || 15.0} ms
 --------------------------------------------------
-
 Raw Phishing Probability:
 ${scan.analysis?.ensemble_probability ?? 0.0}
 
@@ -508,6 +579,15 @@ ${scan.riskScore ?? 0}/100
 
 Final Verdict:
 ${scan.verdict || 'N/A'}
+
+--------------------------------------------------
+SECURITY INDICATORS & ENRICHMENT
+--------------------------------------------------
+SSL Certificate:        ${scan.ssl_status || scan.sslStatus || (scan.ssl ? 'Valid SSL' : 'Missing SSL')}
+Domain Age:             ${scan.domain_age || scan.domainAge || 'Unable to verify'}
+Redirect Chain:         ${scan.redirect_status || scan.redirectStatus || 'Direct'}
+Blacklist Check:        ${scan.blacklist_status || scan.blacklistStatus || (scan.blacklisted ? 'Listed' : 'Clean')}
+Executive Explanation:  ${scan.reason || 'N/A'}
 
 ==================================================
 Server Status: ${healthData.status} (Device: ${healthData.device})

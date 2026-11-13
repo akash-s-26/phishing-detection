@@ -2,12 +2,16 @@ import { api } from './api';
 import type { AnalyticsData, HistoryEntry, ScanResult, Statistics, Verdict } from '@/types';
 
 export async function scanUrl(url: string): Promise<ScanResult> {
-  const { data } = await api.post<ScanResult>('/predict', { url });
+  const { data } = await api.post<ScanResult>('/predict', {
+    url,
+    source: 'Web App',
+  });
   return data;
 }
 
 export interface HistoryFilters {
   result?: Verdict | '';
+  level?: 1 | 2 | 3 | '';
   search?: string;
   date_from?: string;
   date_to?: string;
@@ -17,6 +21,7 @@ export interface HistoryFilters {
 export async function fetchHistory(filters: HistoryFilters = {}): Promise<HistoryEntry[]> {
   const params: Record<string, string | number> = {};
   if (filters.result) params.result = filters.result;
+  if (filters.level) params.level = filters.level;
   if (filters.search) params.search = filters.search;
   if (filters.date_from) params.date_from = filters.date_from;
   if (filters.date_to) params.date_to = filters.date_to;

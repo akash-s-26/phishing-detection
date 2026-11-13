@@ -82,11 +82,11 @@
     if (value === null || value === undefined) return null;
     const score = Number(value);
     if (!Number.isFinite(score)) return null;
-    return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
+    return Math.max(0, Math.min(99.0, Math.round(score * 10) / 10));
   }
 
   /**
-   * Normalizes confidence values into percentage scale [0.0, 100.0].
+   * Normalizes confidence values into percentage scale [50.0, 99.8].
    * Handles both fractional [0.0, 1.0] and percentage [0.0, 100.0] inputs.
    */
   function normalizeConfidence(value) {
@@ -94,10 +94,13 @@
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
 
+    let conf = numeric;
     if (numeric > 0 && numeric <= 1.0) {
-      return Math.round(numeric * 1000) / 10;
+      conf = Math.round(numeric * 1000) / 10;
+    } else {
+      conf = Math.round(numeric * 10) / 10;
     }
-    return Math.max(0, Math.min(100, Math.round(numeric * 10) / 10));
+    return Math.max(50.0, Math.min(99.8, conf));
   }
 
   /**
@@ -200,6 +203,21 @@
       inferenceTimeMs: Number.isFinite(inferenceTime) ? Math.round(inferenceTime * 10) / 10 : null,
       analysis: typeof raw.analysis === 'object' && raw.analysis !== null ? raw.analysis : {},
       signals: signals,
+      reason: String(raw.reason || ''),
+      ssl: raw.ssl !== undefined ? raw.ssl : null,
+      ssl_status: String(raw.ssl_status || (raw.ssl === true ? 'Valid SSL' : (raw.ssl === false ? 'Missing SSL' : 'Unable to verify'))),
+      sslStatus: String(raw.ssl_status || (raw.ssl === true ? 'Valid SSL' : (raw.ssl === false ? 'Missing SSL' : 'Unable to verify'))),
+      domain_age: String(raw.domain_age || 'Unable to verify'),
+      domainAge: String(raw.domain_age || 'Unable to verify'),
+      domain_age_days: raw.domain_age_days ?? null,
+      redirects: Number.isFinite(Number(raw.redirects)) ? Number(raw.redirects) : 0,
+      redirect_chain: Array.isArray(raw.redirect_chain) ? raw.redirect_chain : [],
+      redirect_status: String(raw.redirect_status || `${raw.redirects || 0} redirects`),
+      redirectStatus: String(raw.redirect_status || `${raw.redirects || 0} redirects`),
+      blacklisted: Boolean(raw.blacklisted),
+      blacklist_status: String(raw.blacklist_status || (raw.blacklisted ? 'Listed' : 'Clean')),
+      blacklistStatus: String(raw.blacklist_status || (raw.blacklisted ? 'Listed' : 'Clean')),
+      whois: typeof raw.whois === 'object' && raw.whois !== null ? raw.whois : { registrar: 'Unable to verify', country: 'Unable to verify' },
       telemetry: typeof raw.telemetry === 'object' && raw.telemetry !== null ? raw.telemetry : {},
       cache: 'DISABLED',
       trustedDomainBypass: 'DISABLED',
@@ -217,9 +235,10 @@
     try {
       const u = new URL(withProto);
       const host = u.hostname.replace(/^www\./, '');
-      return (u.protocol + '//' + host + u.pathname).replace(/\/+$/, '');
+      const pathname = (u.pathname || '').replace(/\/+$/, '');
+      return host + (pathname ? pathname : '');
     } catch (e) {
-      return trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+      return trimmed.replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0].replace(/\/+$/, '');
     }
   }
 
@@ -231,21 +250,22 @@
     if (!data) return 'SAFE';
     const verdict = normalizeVerdict(data.verdict || data.prediction);
     const score = normalizeRiskScore(data.riskScore ?? data.risk_score ?? data.risk);
+    const threatLevel = String(data.threatLevel || data.threat_level || '').toUpperCase();
 
-    if (verdict === 'PHISHING' || verdict === 'MALICIOUS' || (data.threatLevel && String(data.threatLevel).toUpperCase() === 'CRITICAL')) {
+    if (verdict === 'PHISHING' || verdict === 'MALICIOUS' || threatLevel === 'CRITICAL' || threatLevel === 'HIGH') {
       return 'DANGEROUS';
     }
-    if (verdict === 'SUSPICIOUS') {
+    if (verdict === 'SUSPICIOUS' || threatLevel === 'MEDIUM') {
       return 'SUSPICIOUS';
     }
-    if (verdict === 'SAFE') {
+    if (verdict === 'SAFE' || threatLevel === 'LOW') {
       return 'SAFE';
     }
 
-    // Threshold Fallback (0-39% -> SAFE, 40-69% -> SUSPICIOUS, 70-100% -> DANGEROUS)
+    // Threshold Fallback (0-30% -> SAFE, 30.1-70% -> SUSPICIOUS, 70.1-100% -> DANGEROUS)
     if (score !== null) {
       if (score >= 70.0) return 'DANGEROUS';
-      if (score >= 40.0) return 'SUSPICIOUS';
+      if (score > 30.0) return 'SUSPICIOUS';
       return 'SAFE';
     }
 
