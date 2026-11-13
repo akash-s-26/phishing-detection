@@ -87,6 +87,8 @@ export interface ScanResult {
   timestamp?: string;
   method?: string;
   source?: string;
+  is_demo?: boolean;
+  isDemo?: boolean;
 }
 
 export interface HistoryEntry {

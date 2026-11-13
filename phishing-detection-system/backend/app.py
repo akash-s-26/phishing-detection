@@ -670,6 +670,128 @@ def predict():
         logging.error(f"Prediction exception for URL '{raw_url}': {e}", exc_info=True)
         return jsonify({'error': 'Internal Deep Learning inference error', 'error_code': 'INTERNAL_ERROR', 'details': str(e)}), 500
 
+@app.route('/api/v1/demo/<int:level>', methods=['GET'])
+@app.route('/api/demo/<int:level>', methods=['GET'])
+def presentation_demo(level):
+    """
+    Presentation Demo Mode Endpoint:
+    Provides controlled test responses for academic presentations representing
+    Level 1 (Safe), Level 2 (Suspicious), and Level 3 (Dangerous Phishing)
+    without modifying real BiLSTM/CNN models or requiring live malicious URLs.
+    """
+    if level == 1:
+        return jsonify({
+            'success': True,
+            'is_demo': True,
+            'isDemo': True,
+            'detection_level': 1,
+            'level_name': 'Level 1 – Low Risk (Safe)',
+            'scan_id': 'demo_l1_safe',
+            'url': 'https://demo.secure-bank-login.com',
+            'prediction': 'safe',
+            'verdict': 'SAFE',
+            'risk_score': 4.2,
+            'riskScore': 4.2,
+            'threat_level': 'LOW',
+            'confidence': 98.8,
+            'bilstm_score': 4.1,
+            'cnn_score': 4.3,
+            'ensemble_score': 4.2,
+            'analysis': {'rnn_probability': 0.041, 'cnn_probability': 0.043, 'ensemble_probability': 0.042},
+            'model_name': 'DL-CNN-BiLSTM (0.55 / 0.45 Ensemble + GAN)',
+            'modelDisplay': 'DL-CNN-BiLSTM (GAN Ensembled)',
+            'inference_time_ms': 14.2,
+            'ssl': True,
+            'ssl_status': 'Valid SSL (TLS 1.3 - Verified)',
+            'domain_age': '12 years (Established)',
+            'domain_age_days': 4380,
+            'redirects': 0,
+            'redirect_status': '0 redirects (Direct)',
+            'blacklisted': False,
+            'blacklist_status': 'Clean (Not listed on threat databases)',
+            'reason': '[DEMO DATA] URL evaluated cleanly with no suspicious indicators. Domain is established (12 years) with valid TLS 1.3 encryption and clean reputation on all threat feeds.',
+            'signals': [
+                {'signal': 'Valid SSL Certificate', 'severity': 'safe', 'description': 'Strong TLS 1.3 certificate issued by DigiCert with extended validation.'},
+                {'signal': 'Established Domain Reputation', 'severity': 'safe', 'description': 'Domain active for over 12 years with clean WHOIS and zero security flags.'}
+            ]
+        }), 200
+    elif level == 2:
+        return jsonify({
+            'success': True,
+            'is_demo': True,
+            'isDemo': True,
+            'detection_level': 2,
+            'level_name': 'Level 2 – Medium Risk (Suspicious)',
+            'scan_id': 'demo_l2_suspicious',
+            'url': 'https://demo-account-verification-alert.xyz/verify',
+            'prediction': 'suspicious',
+            'verdict': 'SUSPICIOUS',
+            'risk_score': 48.5,
+            'riskScore': 48.5,
+            'threat_level': 'MEDIUM',
+            'confidence': 86.4,
+            'bilstm_score': 49.2,
+            'cnn_score': 47.6,
+            'ensemble_score': 48.5,
+            'analysis': {'rnn_probability': 0.492, 'cnn_probability': 0.476, 'ensemble_probability': 0.485},
+            'model_name': 'DL-CNN-BiLSTM (0.55 / 0.45 Ensemble + GAN)',
+            'modelDisplay': 'DL-CNN-BiLSTM (GAN Ensembled)',
+            'inference_time_ms': 22.4,
+            'ssl': True,
+            'ssl_status': 'Valid SSL (Free / Low Assurance)',
+            'domain_age': '14 days (Newly Registered)',
+            'domain_age_days': 14,
+            'redirects': 1,
+            'redirect_status': '1 redirect (Tracking intermediary)',
+            'blacklisted': False,
+            'blacklist_status': 'Clean (Not yet blacklisted - emerging domain)',
+            'reason': '[DEMO DATA] Flagged as Level 2 Medium Risk (Suspicious) with a continuous threat score of 48.5%. Detected indicators: Newly registered domain (14 days), high-risk generic TLD (.xyz), and intermediate redirect. Caution is advised: avoid submitting passwords or sensitive credentials until verified.',
+            'signals': [
+                {'signal': 'Newly Registered Domain', 'severity': 'medium', 'description': 'Domain registered only 14 days ago — typical of temporary phishing infrastructure.'},
+                {'signal': 'Unusual Subdomain & TLD', 'severity': 'medium', 'description': 'High-risk .xyz generic TLD paired with urgent verification keywords.'},
+                {'signal': 'Intermediate Redirect Hop', 'severity': 'low', 'description': 'URL redirects through an external tracking hop before reaching final page.'}
+            ]
+        }), 200
+    elif level == 3:
+        return jsonify({
+            'success': True,
+            'is_demo': True,
+            'isDemo': True,
+            'detection_level': 3,
+            'level_name': 'Level 3 – High Risk (Dangerous Phishing)',
+            'scan_id': 'demo_l3_phishing',
+            'url': 'http://demo.paypal.security-update.com.signin.net/login',
+            'prediction': 'phishing',
+            'verdict': 'PHISHING',
+            'risk_score': 92.4,
+            'riskScore': 92.4,
+            'threat_level': 'CRITICAL',
+            'confidence': 99.1,
+            'bilstm_score': 91.8,
+            'cnn_score': 93.1,
+            'ensemble_score': 92.4,
+            'analysis': {'rnn_probability': 0.918, 'cnn_probability': 0.931, 'ensemble_probability': 0.924},
+            'model_name': 'DL-CNN-BiLSTM (0.55 / 0.45 Ensemble + GAN)',
+            'modelDisplay': 'DL-CNN-BiLSTM (GAN Ensembled)',
+            'inference_time_ms': 18.7,
+            'ssl': False,
+            'ssl_status': 'Missing SSL (Plain HTTP - Insecure)',
+            'domain_age': 'Unable to verify (Privacy protected)',
+            'domain_age_days': None,
+            'redirects': 2,
+            'redirect_status': '2 redirects (Obfuscated chain)',
+            'blacklisted': True,
+            'blacklist_status': 'Listed (Confirmed Phishing Threat)',
+            'reason': '[DEMO DATA] CRITICAL WARNING: Classified as Level 3 High Risk (Dangerous Phishing) with a threat score of 92.4%. Critical indicators: Unencrypted plain HTTP transmission, aggressive brand spoofing (PayPal impersonation), and active threat blacklist listing. Do NOT enter passwords, banking details, or personal credentials.',
+            'signals': [
+                {'signal': 'Deceptive Brand Impersonation', 'severity': 'critical', 'description': 'Detected deceptive PayPal brand imitation using nested misleading subdomains.'},
+                {'signal': 'Unencrypted Plain HTTP Transmission', 'severity': 'critical', 'description': 'Sensitive login interface transmitted without SSL/TLS encryption.'},
+                {'signal': 'Active Threat Blacklist Match', 'severity': 'high', 'description': 'Domain actively flagged in threat intelligence feeds as credential harvesting infrastructure.'}
+            ]
+        }), 200
+    else:
+        return jsonify({'error': 'Invalid demo level. Must be 1, 2, or 3', 'error_code': 'BAD_REQUEST'}), 400
+
 @app.route('/history', methods=['GET'])
 @app.route('/api/scans', methods=['GET'])
 @app.route('/api/v1/history', methods=['GET'])

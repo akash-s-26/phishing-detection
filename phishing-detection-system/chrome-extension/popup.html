@@ -23,6 +23,23 @@
       </div>
     </header>
 
+    <!-- Presentation Demo Toolbar -->
+    <div class="demo-toolbar" id="demo-toolbar">
+      <div class="demo-toolbar-header">
+        <span class="demo-title">PRESENTATION DEMO</span>
+        <span class="demo-status-tag" id="demo-status-tag">LIVE MODE</span>
+      </div>
+      <div class="demo-btn-group">
+        <button class="demo-btn demo-btn-l1" id="btn-demo-l1" title="Demonstrate Level 1: Safe Website">L1 Safe</button>
+        <button class="demo-btn demo-btn-l2" id="btn-demo-l2" title="Demonstrate Level 2: Suspicious Website">L2 Suspicious</button>
+        <button class="demo-btn demo-btn-l3" id="btn-demo-l3" title="Demonstrate Level 3: Phishing Threat">L3 Danger</button>
+        <button class="demo-btn demo-btn-live active" id="btn-demo-live" title="Restore Live Scanner">Live</button>
+      </div>
+      <div class="demo-actions-row" id="demo-actions-row" style="display: none;">
+        <button class="btn-trigger-banner" id="btn-trigger-banner" title="Inject simulated warning onto active webpage">Project UI to Current Page</button>
+      </div>
+    </div>
+
     <!-- Navigation Tabs -->
     <nav class="nav-tabs">
       <button class="nav-tab active" data-tab="overview">Overview</button>
@@ -32,6 +49,11 @@
 
     <!-- TAB 1: OVERVIEW -->
     <div class="tab-content active" id="tab-overview">
+      <!-- Demo Watermark -->
+      <div class="demo-watermark" id="demo-watermark" style="display: none;">
+        DEMO DATA — SIMULATED PRESENTATION FIXTURE
+      </div>
+
       <!-- Current Website Card -->
       <div class="card url-card">
         <span class="card-label">CURRENT WEBSITE</span>

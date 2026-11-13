@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
@@ -7,10 +7,17 @@ import { Button } from '@/components/ui/Button';
 interface ScanFormProps {
   onScan: (url: string) => void;
   isLoading: boolean;
+  initialUrl?: string;
 }
 
-export function ScanForm({ onScan, isLoading }: ScanFormProps) {
-  const [url, setUrl] = useState('');
+export function ScanForm({ onScan, isLoading, initialUrl }: ScanFormProps) {
+  const [url, setUrl] = useState(initialUrl || '');
+
+  useEffect(() => {
+    if (initialUrl !== undefined) {
+      setUrl(initialUrl);
+    }
+  }, [initialUrl]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

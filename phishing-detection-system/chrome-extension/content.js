@@ -109,10 +109,11 @@
     if (!data) return;
     if (!data.url) data.url = location.href;
 
-    // Strict Stale-Result Protection: Ensure scan result URL matches current page location
+    // Strict Stale-Result Protection: Ensure scan result URL matches current page location (bypassed in demo mode)
+    const isDemo = Boolean(data.is_demo || data.isDemo);
     const normResultUrl = normalizeUrl(data.url);
     const normCurrentUrl = normalizeUrl(location.href);
-    if (normResultUrl && normCurrentUrl && normResultUrl !== normCurrentUrl) {
+    if (!isDemo && normResultUrl && normCurrentUrl && normResultUrl !== normCurrentUrl) {
       console.log(`[PhishGuard] STALE_RESULT_IGNORED: Result URL (${data.url}) !== Current URL (${location.href})`);
       return;
     }
@@ -376,7 +377,7 @@
         <div class="banner-header">
           <div class="header-title-group">
             <div class="status-icon-box">${iconSymbol}</div>
-            <span class="banner-title">${escapeHTML(titleText)}</span>
+            <span class="banner-title">${escapeHTML(titleText)}${(data.is_demo || data.isDemo) ? ' <span style="font-size:9px;background:rgba(56,189,248,0.2);color:#38bdf8;padding:2px 6px;border-radius:4px;margin-left:6px;border:1px solid rgba(56,189,248,0.3);font-family:monospace;">DEMO</span>' : ''}</span>
           </div>
           <button class="close-btn" id="btn-banner-close" title="Dismiss">✕</button>
         </div>
@@ -613,7 +614,7 @@
         <div class="modal-card">
           <div class="shield-icon-container">${modalImgTag}</div>
           <div class="threat-badge">
-            <span>⚠️ PHISHGUARD AI SECURITY INTERSTITIAL</span>
+            <span>${(data.is_demo || data.isDemo) ? '⚠️ [DEMO DATA] PHISHGUARD AI SECURITY INTERSTITIAL' : '⚠️ PHISHGUARD AI SECURITY INTERSTITIAL'}</span>
           </div>
           <h1 class="title">DANGEROUS WEBSITE</h1>
           <p class="description">
@@ -670,6 +671,10 @@
     const safetyBtn = dangerOverlayRoot.getElementById('btn-safety');
     if (safetyBtn) {
       safetyBtn.addEventListener('click', () => {
+        if (data.is_demo || data.isDemo) {
+          removeDangerOverlayHost();
+          return;
+        }
         if (window.history.length > 1) {
           window.history.back();
         } else {

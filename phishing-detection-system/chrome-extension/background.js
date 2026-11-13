@@ -19,6 +19,7 @@ const FALLBACK_PRODUCTION_API_URL = 'https://phishing-detection-4lb0.onrender.co
 
 // Per-tab Scan State Machine Map
 const scanStates = new Map(); // tabId -> scanState object
+const demoTabStates = new Map(); // tabId -> demoScanState (Presentation Demo Mode)
 const activeScanState = {}; // tabId -> { scanId, url, timestamp }
 const recentNavigations = {}; // `${tabId}_${url}` -> timestamp
 const scanPulseTimers = new Map(); // tabId -> intervalId
@@ -143,6 +144,11 @@ async function setTabScanState(tabId, stateObj) {
 async function getTabScanState(tabId, currentUrl) {
   if (!tabId) return null;
 
+  // 1. Check Presentation Demo Mode state first
+  if (demoTabStates.has(tabId)) {
+    return demoTabStates.get(tabId);
+  }
+
   let state = scanStates.get(tabId);
 
   if (!state && chrome.storage && chrome.storage.session) {
@@ -161,8 +167,8 @@ async function getTabScanState(tabId, currentUrl) {
 
   if (!state) return null;
 
-  // Strict URL Invalidation Check
-  if (currentUrl && state.url) {
+  // Strict URL Invalidation Check (bypassed in Presentation Demo Mode)
+  if (!state.is_demo && !state.isDemo && currentUrl && state.url) {
     const normCurrent = normalizeUrl(currentUrl);
     const normStored = normalizeUrl(state.url);
     if (normCurrent !== normStored) {
@@ -199,8 +205,9 @@ function isInjectableUrl(url) {
 async function sendOrInjectWarning(tabId, scanState) {
   if (!tabId || !chrome.runtime?.id) return;
 
+  const isDemo = Boolean(scanState?.is_demo || scanState?.isDemo);
   const scanUrl = scanState ? (scanState.url || scanState.target_url) : '';
-  if (scanUrl && !isInjectableUrl(scanUrl)) {
+  if (!isDemo && scanUrl && !isInjectableUrl(scanUrl)) {
     console.log(`[PhishGuard] Warning injection skipped on restricted/error URL: ${scanUrl}`);
     return;
   }
@@ -253,8 +260,9 @@ async function sendOrInjectWarning(tabId, scanState) {
 async function sendOrInjectResultBanner(tabId, scanState) {
   if (!tabId || !chrome.runtime?.id) return;
 
+  const isDemo = Boolean(scanState?.is_demo || scanState?.isDemo);
   const scanUrl = scanState ? (scanState.url || scanState.target_url) : '';
-  if (scanUrl && !isInjectableUrl(scanUrl)) {
+  if (!isDemo && scanUrl && !isInjectableUrl(scanUrl)) {
     console.log(`[PhishGuard] Banner injection skipped on restricted/error URL: ${scanUrl}`);
     return;
   }
@@ -515,6 +523,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
   delete activeScanState[tabId];
   scanStates.delete(tabId);
+  demoTabStates.delete(tabId);
   if (chrome.storage && chrome.storage.session) {
     chrome.storage.session.remove([`tab_${tabId}`]).catch(() => {});
   }
@@ -554,6 +563,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ status: 'scanning' });
     });
     return true;
+  }
+
+  // ── PRESENTATION DEMO MODE MESSAGE HANDLERS ──
+  if (message.action === 'SET_DEMO_STATE' || message.type === 'SET_DEMO_STATE') {
+    const tabId = message.tabId || (sender.tab ? sender.tab.id : null);
+    const fixture = message.fixture || (self.PhishGuardNormalizer ? self.PhishGuardNormalizer.normalizeScanResult(message) : message);
+    if (tabId && fixture) {
+      fixture.is_demo = true;
+      fixture.isDemo = true;
+      fixture.status = 'SUCCESS';
+      fixture.tabId = tabId;
+
+      demoTabStates.set(tabId, fixture);
+      setTabScanState(tabId, fixture).then(() => {
+        dispatchScanResultUI(tabId, fixture);
+        sendResponse({ status: 'demo_active', level: message.demoLevel || fixture.detection_level });
+      });
+      return true;
+    }
+  }
+
+  if (message.action === 'TRIGGER_DEMO_UI' || message.type === 'TRIGGER_DEMO_UI') {
+    const tabId = message.tabId || (sender.tab ? sender.tab.id : null);
+    const fixture = message.fixture || demoTabStates.get(tabId);
+    if (tabId && fixture) {
+      dispatchScanResultUI(tabId, fixture);
+      sendResponse({ status: 'demo_ui_dispatched' });
+      return true;
+    }
+  }
+
+  if (message.action === 'CLEAR_DEMO_STATE' || message.type === 'CLEAR_DEMO_STATE') {
+    const tabId = message.tabId || (sender.tab ? sender.tab.id : null);
+    if (tabId) {
+      demoTabStates.delete(tabId);
+      chrome.tabs.sendMessage(tabId, { action: 'CLEAR_THREAT_WARNING' }, () => {
+        if (chrome.runtime.lastError) {}
+      });
+      sendResponse({ status: 'demo_cleared' });
+      return true;
+    }
   }
 });
 

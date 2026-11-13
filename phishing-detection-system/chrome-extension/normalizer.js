@@ -221,6 +221,8 @@
       telemetry: typeof raw.telemetry === 'object' && raw.telemetry !== null ? raw.telemetry : {},
       cache: 'DISABLED',
       trustedDomainBypass: 'DISABLED',
+      is_demo: Boolean(raw.is_demo || raw.isDemo),
+      isDemo: Boolean(raw.is_demo || raw.isDemo),
       timestamp: String(raw.timestamp || new Date().toISOString())
     };
   }

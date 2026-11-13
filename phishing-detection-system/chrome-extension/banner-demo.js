@@ -53,58 +53,97 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 1. Trigger SAFE State
+  // 1. Trigger SAFE State (Level 1)
   document.getElementById('btn-trigger-safe').addEventListener('click', () => {
     dispatchScanResult({
-      scanId: 'scan_safe_' + Date.now(),
-      url: 'https://github.com/phishguard-ai/deep-learning',
+      scanId: 'demo_l1_safe_' + Date.now(),
+      url: 'https://demo.secure-bank-login.com',
       verdict: 'SAFE',
       prediction: 'SAFE',
-      riskScore: 2.0,
+      riskScore: 4.2,
       threatLevel: 'LOW',
-      confidence: 98.4,
+      confidence: 98.8,
       modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
-      inferenceTimeMs: 18.5,
+      inferenceTimeMs: 14.2,
+      ssl: true,
+      ssl_status: 'Valid SSL (TLS 1.3 - Verified)',
+      domain_age: '12 years (Established)',
+      domain_age_days: 4380,
+      redirects: 0,
+      redirect_status: '0 redirects (Direct)',
+      blacklisted: false,
+      blacklist_status: 'Clean (Not listed on threat databases)',
+      reason: '[DEMO DATA] URL evaluated cleanly with no suspicious indicators. Domain is established (12 years) with valid TLS 1.3 encryption and clean reputation on all threat feeds.',
+      signals: [
+        { signal: 'Valid SSL Certificate', severity: 'safe', description: 'Strong TLS 1.3 certificate issued by DigiCert with extended validation.' },
+        { signal: 'Established Domain Reputation', severity: 'safe', description: 'Domain active for over 12 years with clean WHOIS and zero security flags.' }
+      ],
+      is_demo: true,
+      isDemo: true,
       timestamp: new Date().toISOString()
     });
   });
 
-  // 2. Trigger SUSPICIOUS State
+  // 2. Trigger SUSPICIOUS State (Level 2)
   document.getElementById('btn-trigger-suspicious').addEventListener('click', () => {
     dispatchScanResult({
-      scanId: 'scan_suspicious_' + Date.now(),
-      url: 'https://account-verification-support.net/login',
+      scanId: 'demo_l2_suspicious_' + Date.now(),
+      url: 'https://demo-account-verification-alert.xyz/verify',
       verdict: 'SUSPICIOUS',
       prediction: 'SUSPICIOUS',
-      riskScore: 58.0,
+      riskScore: 48.5,
       threatLevel: 'MEDIUM',
-      confidence: 84.0,
-      modelDisplay: 'DL-CNN-BiLSTM',
-      inferenceTimeMs: 24.1,
+      confidence: 86.4,
+      modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
+      inferenceTimeMs: 22.4,
+      ssl: true,
+      ssl_status: 'Valid SSL (Free / Low Assurance)',
+      domain_age: '14 days (Newly Registered)',
+      domain_age_days: 14,
+      redirects: 1,
+      redirect_status: '1 redirect (Tracking intermediary)',
+      blacklisted: false,
+      blacklist_status: 'Clean (Not yet blacklisted - emerging domain)',
+      reason: '[DEMO DATA] Flagged as Level 2 Medium Risk (Suspicious) with a continuous threat score of 48.5%. Detected indicators: Newly registered domain (14 days), high-risk generic TLD (.xyz), and intermediate redirect. Caution is advised: avoid submitting passwords or sensitive credentials until verified.',
       signals: [
-        { signal: 'Unusual Subdomain Structure', severity: 'medium', description: 'Multiple nested subdomains detected' },
-        { signal: 'Domain Age Anomaly', severity: 'medium', description: 'Domain registered under 7 days ago' }
+        { signal: 'Newly Registered Domain', severity: 'medium', description: 'Domain registered only 14 days ago — typical of temporary phishing infrastructure.' },
+        { signal: 'Unusual Subdomain & TLD', severity: 'medium', description: 'High-risk .xyz generic TLD paired with urgent verification keywords.' },
+        { signal: 'Intermediate Redirect Hop', severity: 'low', description: 'URL redirects through an external tracking hop before reaching final page.' }
       ],
+      is_demo: true,
+      isDemo: true,
       timestamp: new Date().toISOString()
     });
   });
 
-  // 3. Trigger DANGEROUS / PHISHING State
+  // 3. Trigger DANGEROUS / PHISHING State (Level 3)
   document.getElementById('btn-trigger-dangerous').addEventListener('click', () => {
     dispatchScanResult({
-      scanId: 'scan_phishing_' + Date.now(),
-      url: 'https://secure-bank-login-update.com/account/login.php',
+      scanId: 'demo_l3_phishing_' + Date.now(),
+      url: 'http://demo.paypal.security-update.com.signin.net/login',
       verdict: 'PHISHING',
       prediction: 'PHISHING',
-      riskScore: 94.5,
+      riskScore: 92.4,
       threatLevel: 'CRITICAL',
-      confidence: 99.2,
-      modelDisplay: 'DL-RNN-GAN (Ensembled)',
-      inferenceTimeMs: 14.8,
+      confidence: 99.1,
+      modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
+      inferenceTimeMs: 18.7,
+      ssl: false,
+      ssl_status: 'Missing SSL (Plain HTTP - Insecure)',
+      domain_age: 'Unable to verify (Privacy protected)',
+      domain_age_days: null,
+      redirects: 2,
+      redirect_status: '2 redirects (Obfuscated chain)',
+      blacklisted: true,
+      blacklist_status: 'Listed (Confirmed Phishing Threat)',
+      reason: '[DEMO DATA] CRITICAL WARNING: Classified as Level 3 High Risk (Dangerous Phishing) with a threat score of 92.4%. Critical indicators: Unencrypted plain HTTP transmission, aggressive brand spoofing (PayPal impersonation), and active threat blacklist listing. Do NOT enter passwords, banking details, or personal credentials.',
       signals: [
-        { signal: 'Credential Harvesting Form', severity: 'high', description: 'Hidden password inputs posting to external IP' },
-        { signal: 'Brand Impersonation', severity: 'high', description: 'High visual similarity to financial institution' }
+        { signal: 'Deceptive Brand Impersonation', severity: 'critical', description: 'Detected deceptive PayPal brand imitation using nested misleading subdomains.' },
+        { signal: 'Unencrypted Plain HTTP Transmission', severity: 'critical', description: 'Sensitive login interface transmitted without SSL/TLS encryption.' },
+        { signal: 'Active Threat Blacklist Match', severity: 'high', description: 'Domain actively flagged in threat intelligence feeds as credential harvesting infrastructure.' }
       ],
+      is_demo: true,
+      isDemo: true,
       timestamp: new Date().toISOString()
     });
   });

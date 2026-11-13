@@ -177,6 +177,19 @@ export function ResultCard({ result }: { result: ScanResult }) {
       transition={{ duration: 0.4 }}
       className="space-y-6"
     >
+      {/* ── DEMO DATA WATERMARK / NOTICE ── */}
+      {(result.is_demo || result.isDemo) && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-cyan-500/40 bg-cyan-950/40 px-4 py-2.5 text-xs font-mono shadow-md backdrop-blur-sm">
+          <div className="flex items-center gap-2 font-bold text-cyan-300">
+            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>DEMO DATA — CONTROLLED PRESENTATION SIMULATION</span>
+          </div>
+          <span className="text-[11px] text-cyan-400/80">
+            Simulated test response for academic presentation demonstration
+          </span>
+        </div>
+      )}
+
       {/* ── 1. PROMINENT THREE-LEVEL DETECTION BANNER ── */}
       <div
         className={`rounded-2xl border ${bannerTheme.border} ${bannerTheme.bg} ${bannerTheme.glow} p-5 md:p-6 transition-all`}

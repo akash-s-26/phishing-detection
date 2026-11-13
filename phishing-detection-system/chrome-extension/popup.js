@@ -54,6 +54,114 @@ function getModelDisplay(model) {
 let currentTabId = null;
 let currentTabUrl = null;
 let scanPollInterval = null;
+let activeDemoFixture = null;
+
+const DEMO_FIXTURES = {
+  1: {
+    scanId: 'demo_l1_safe',
+    url: 'https://demo.secure-bank-login.com',
+    prediction: 'safe',
+    verdict: 'SAFE',
+    riskScore: 4.2,
+    threatLevel: 'LOW',
+    confidence: 98.8,
+    detection_level: 1,
+    levelName: 'Level 1 – Low Risk (Safe)',
+    modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
+    inferenceTimeMs: 14.2,
+    ssl: true,
+    ssl_status: 'Valid SSL (TLS 1.3 - Verified)',
+    domain_age: '12 years (Established)',
+    domain_age_days: 4380,
+    redirects: 0,
+    redirect_status: '0 redirects (Direct)',
+    blacklisted: false,
+    blacklist_status: 'Clean (Not listed on threat databases)',
+    analysis: {
+      rnn_probability: 0.041,
+      cnn_probability: 0.043,
+      ensemble_probability: 0.042
+    },
+    reason: '[DEMO DATA] URL evaluated cleanly with no suspicious indicators. Domain is established (12 years) with valid TLS 1.3 encryption and clean reputation on all threat feeds.',
+    signals: [
+      { signal: 'Valid SSL Certificate', severity: 'safe', description: 'Strong TLS 1.3 certificate issued by DigiCert with extended validation.' },
+      { signal: 'Established Domain Reputation', severity: 'safe', description: 'Domain active for over 12 years with clean WHOIS and zero security flags.' }
+    ],
+    is_demo: true,
+    isDemo: true,
+    status: 'SUCCESS'
+  },
+  2: {
+    scanId: 'demo_l2_suspicious',
+    url: 'https://demo-account-verification-alert.xyz/verify',
+    prediction: 'suspicious',
+    verdict: 'SUSPICIOUS',
+    riskScore: 48.5,
+    threatLevel: 'MEDIUM',
+    confidence: 86.4,
+    detection_level: 2,
+    levelName: 'Level 2 – Medium Risk (Suspicious)',
+    modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
+    inferenceTimeMs: 22.4,
+    ssl: true,
+    ssl_status: 'Valid SSL (Free / Low Assurance)',
+    domain_age: '14 days (Newly Registered)',
+    domain_age_days: 14,
+    redirects: 1,
+    redirect_status: '1 redirect (Tracking intermediary)',
+    blacklisted: false,
+    blacklist_status: 'Clean (Not yet blacklisted - emerging domain)',
+    analysis: {
+      rnn_probability: 0.492,
+      cnn_probability: 0.476,
+      ensemble_probability: 0.485
+    },
+    reason: '[DEMO DATA] Flagged as Level 2 Medium Risk (Suspicious) with a continuous threat score of 48.5%. Detected indicators: Newly registered domain (14 days), high-risk generic TLD (.xyz), and intermediate redirect. Caution is advised: avoid submitting passwords or sensitive credentials until verified.',
+    signals: [
+      { signal: 'Newly Registered Domain', severity: 'medium', description: 'Domain registered only 14 days ago — typical of temporary phishing infrastructure.' },
+      { signal: 'Unusual Subdomain & TLD', severity: 'medium', description: 'High-risk .xyz generic TLD paired with urgent verification keywords.' },
+      { signal: 'Intermediate Redirect Hop', severity: 'low', description: 'URL redirects through an external tracking hop before reaching final page.' }
+    ],
+    is_demo: true,
+    isDemo: true,
+    status: 'SUCCESS'
+  },
+  3: {
+    scanId: 'demo_l3_phishing',
+    url: 'http://demo.paypal.security-update.com.signin.net/login',
+    prediction: 'phishing',
+    verdict: 'PHISHING',
+    riskScore: 92.4,
+    threatLevel: 'CRITICAL',
+    confidence: 99.1,
+    detection_level: 3,
+    levelName: 'Level 3 – High Risk (Dangerous Phishing)',
+    modelDisplay: 'DL-CNN-BiLSTM (GAN Ensembled)',
+    inferenceTimeMs: 18.7,
+    ssl: false,
+    ssl_status: 'Missing SSL (Plain HTTP - Insecure)',
+    domain_age: 'Unable to verify (Privacy protected)',
+    domain_age_days: null,
+    redirects: 2,
+    redirect_status: '2 redirects (Obfuscated chain)',
+    blacklisted: true,
+    blacklist_status: 'Listed (Confirmed Phishing Threat)',
+    analysis: {
+      rnn_probability: 0.918,
+      cnn_probability: 0.931,
+      ensemble_probability: 0.924
+    },
+    reason: '[DEMO DATA] CRITICAL WARNING: Classified as Level 3 High Risk (Dangerous Phishing) with a threat score of 92.4%. Critical indicators: Unencrypted plain HTTP transmission, aggressive brand spoofing (PayPal impersonation), and active threat blacklist listing. Do NOT enter passwords, banking details, or personal credentials.',
+    signals: [
+      { signal: 'Deceptive Brand Impersonation', severity: 'critical', description: 'Detected deceptive PayPal brand imitation using nested misleading subdomains.' },
+      { signal: 'Unencrypted Plain HTTP Transmission', severity: 'critical', description: 'Sensitive login interface transmitted without SSL/TLS encryption.' },
+      { signal: 'Active Threat Blacklist Match', severity: 'high', description: 'Domain actively flagged in threat intelligence feeds as credential harvesting infrastructure.' }
+    ],
+    is_demo: true,
+    isDemo: true,
+    status: 'SUCCESS'
+  }
+};
 
 function clearScanPolling() {
   if (scanPollInterval) {
@@ -120,48 +228,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 1. Initial UI State: INITIALIZING (NOT SCANNING!)
     renderScanState({ status: 'INITIALIZING' });
 
-    // 2. Query Active Tab
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const currentUrlElem = document.getElementById('current-url');
+    // 2. Attach Presentation Demo Toolbar Handlers (Always available)
+    const btnL1 = document.getElementById('btn-demo-l1');
+    const btnL2 = document.getElementById('btn-demo-l2');
+    const btnL3 = document.getElementById('btn-demo-l3');
+    const btnLive = document.getElementById('btn-demo-live');
+    const btnTriggerBanner = document.getElementById('btn-trigger-banner');
 
-    if (!activeTab || !activeTab.url) {
-      if (currentUrlElem) currentUrlElem.textContent = 'No active webpage';
-      renderScanState({ status: 'IDLE' });
-      return;
-    }
-
-    currentTabId = activeTab.id;
-    currentTabUrl = activeTab.url;
-    if (currentUrlElem) currentUrlElem.textContent = activeTab.url;
-    console.log('[PhishGuard] ACTIVE_TAB:', currentTabId, currentTabUrl);
-
-    // 3. Query GET_CURRENT_SCAN_STATE from Background
-    console.log('[PhishGuard] GET_CURRENT_SCAN_STATE for Tab', currentTabId);
-    let state = await fetchCurrentScanState(currentTabId, currentTabUrl);
-
-    // 4. Strict URL Comparison Check
-    if (state && state.url) {
-      const normCurrent = window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeUrlForComparison(currentTabUrl) : currentTabUrl.toLowerCase();
-      const normStored = window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeUrlForComparison(state.url) : state.url.toLowerCase();
-      if (normCurrent !== normStored) {
-        console.log(`[PhishGuard] STALE_RESULT_IGNORED: Stored URL (${state.url}) != Active URL (${currentTabUrl})`);
-        state = null;
+    function activateDemoLevel(level) {
+      const fixture = DEMO_FIXTURES[level];
+      activeDemoFixture = fixture;
+      clearScanPolling();
+      renderScanState(fixture);
+      if (currentTabId && typeof chrome !== 'undefined' && chrome.runtime?.id) {
+        chrome.runtime.sendMessage({
+          action: 'SET_DEMO_STATE',
+          type: 'SET_DEMO_STATE',
+          tabId: currentTabId,
+          demoLevel: level,
+          fixture: fixture
+        });
       }
     }
 
-    // 5. Render Current Scan State
-    if (!state && currentTabUrl.startsWith('http')) {
-      console.log('[PhishGuard] NO_STATE_FOUND Initiating scan for', currentTabUrl);
-      renderScanState({ status: 'SCANNING', url: currentTabUrl });
-      chrome.runtime.sendMessage({
-        action: 'TRIGGER_MANUAL_SCAN',
-        type: 'TRIGGER_MANUAL_SCAN',
-        tabId: currentTabId,
-        url: currentTabUrl
+    function deactivateDemoMode() {
+      activeDemoFixture = null;
+      clearScanPolling();
+      if (currentTabId && typeof chrome !== 'undefined' && chrome.runtime?.id) {
+        chrome.runtime.sendMessage({
+          action: 'CLEAR_DEMO_STATE',
+          type: 'CLEAR_DEMO_STATE',
+          tabId: currentTabId,
+          url: currentTabUrl
+        });
+      }
+      if (currentTabUrl && currentTabUrl.startsWith('http')) {
+        renderScanState({ status: 'SCANNING', url: currentTabUrl });
+        if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+          chrome.runtime.sendMessage({
+            action: 'TRIGGER_MANUAL_SCAN',
+            type: 'TRIGGER_MANUAL_SCAN',
+            tabId: currentTabId,
+            url: currentTabUrl
+          });
+        }
+      } else {
+        renderScanState({ status: 'IDLE' });
+      }
+    }
+
+    if (btnL1) btnL1.addEventListener('click', () => activateDemoLevel(1));
+    if (btnL2) btnL2.addEventListener('click', () => activateDemoLevel(2));
+    if (btnL3) btnL3.addEventListener('click', () => activateDemoLevel(3));
+    if (btnLive) btnLive.addEventListener('click', deactivateDemoMode);
+    if (btnTriggerBanner) {
+      btnTriggerBanner.addEventListener('click', () => {
+        if (activeDemoFixture && currentTabId && typeof chrome !== 'undefined' && chrome.runtime?.id) {
+          chrome.runtime.sendMessage({
+            action: 'TRIGGER_DEMO_UI',
+            type: 'TRIGGER_DEMO_UI',
+            tabId: currentTabId,
+            fixture: activeDemoFixture
+          });
+        }
       });
-    } else {
-      console.log('[PhishGuard] STATE_FOUND Rendering state:', state?.status || 'IDLE', state);
-      renderScanState(state);
     }
 
     // Manual Re-Scan Button Handler
@@ -170,12 +300,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       rescanBtn.addEventListener('click', async () => {
         clearScanPolling();
         renderScanState({ status: 'SCANNING', url: currentTabUrl });
-        chrome.runtime.sendMessage({
-          action: 'TRIGGER_MANUAL_SCAN',
-          type: 'TRIGGER_MANUAL_SCAN',
-          tabId: currentTabId,
-          url: currentTabUrl
-        });
+        if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
+          chrome.runtime.sendMessage({
+            action: 'TRIGGER_MANUAL_SCAN',
+            type: 'TRIGGER_MANUAL_SCAN',
+            tabId: currentTabId,
+            url: currentTabUrl
+          });
+        }
       });
     }
 
@@ -201,9 +333,66 @@ document.addEventListener('DOMContentLoaded', async () => {
             await chrome.tabs.create({ url: dashboardUrl });
           }
         } catch (e) {
-          chrome.tabs.create({ url: dashboardUrl });
+          if (typeof chrome !== 'undefined' && chrome.tabs) {
+            chrome.tabs.create({ url: dashboardUrl });
+          } else {
+            window.open(dashboardUrl, '_blank');
+          }
         }
       });
+    }
+
+    // 3. Query Active Tab Safely
+    const currentUrlElem = document.getElementById('current-url');
+    let activeTab = null;
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tabs && tabs.length > 0) activeTab = tabs[0];
+      }
+    } catch (e) {
+      console.warn('[PhishGuard] Tab query not available in current context:', e.message);
+    }
+
+    if (!activeTab || !activeTab.url) {
+      if (currentUrlElem) currentUrlElem.textContent = 'No active webpage';
+      renderScanState({ status: 'IDLE' });
+      return;
+    }
+
+    currentTabId = activeTab.id;
+    currentTabUrl = activeTab.url;
+    if (currentUrlElem) currentUrlElem.textContent = activeTab.url;
+    console.log('[PhishGuard] ACTIVE_TAB:', currentTabId, currentTabUrl);
+
+    // 4. Query GET_CURRENT_SCAN_STATE from Background
+    console.log('[PhishGuard] GET_CURRENT_SCAN_STATE for Tab', currentTabId);
+    let state = await fetchCurrentScanState(currentTabId, currentTabUrl);
+
+    // 5. Strict URL Comparison Check (bypassed for presentation demo fixtures)
+    if (state && state.url) {
+      const isDemo = Boolean(state.is_demo || state.isDemo);
+      const normCurrent = window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeUrlForComparison(currentTabUrl) : currentTabUrl.toLowerCase();
+      const normStored = window.PhishGuardNormalizer ? window.PhishGuardNormalizer.normalizeUrlForComparison(state.url) : state.url.toLowerCase();
+      if (!isDemo && normCurrent !== normStored) {
+        console.log(`[PhishGuard] STALE_RESULT_IGNORED: Stored URL (${state.url}) != Active URL (${currentTabUrl})`);
+        state = null;
+      }
+    }
+
+    // 6. Render Current Scan State
+    if (!state && currentTabUrl.startsWith('http')) {
+      console.log('[PhishGuard] NO_STATE_FOUND Initiating scan for', currentTabUrl);
+      renderScanState({ status: 'SCANNING', url: currentTabUrl });
+      chrome.runtime.sendMessage({
+        action: 'TRIGGER_MANUAL_SCAN',
+        type: 'TRIGGER_MANUAL_SCAN',
+        tabId: currentTabId,
+        url: currentTabUrl
+      });
+    } else {
+      console.log('[PhishGuard] STATE_FOUND Rendering state:', state?.status || 'IDLE', state);
+      renderScanState(state);
     }
 
   } catch (err) {
@@ -242,18 +431,23 @@ async function fetchCurrentScanState(tabId, url) {
 }
 
 // ── LIVE SCAN_STATE_UPDATED LISTENER ───────────────────────────────────────
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'SCAN_STATE_UPDATED' || message.action === 'SCAN_STATE_UPDATED') {
-    if (Number(message.tabId) === Number(currentTabId) && message.state) {
-      console.log('[PhishGuard] SCAN_STATE_UPDATED Live message received:', message.state.status);
-      clearScanPolling();
-      renderScanState(message.state);
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'SCAN_STATE_UPDATED' || message.action === 'SCAN_STATE_UPDATED') {
+      if (Number(message.tabId) === Number(currentTabId) && message.state) {
+        console.log('[PhishGuard] SCAN_STATE_UPDATED Live message received:', message.state.status);
+        clearScanPolling();
+        renderScanState(message.state);
+      }
     }
-  }
-});
+  });
+}
 
 // ── EXPLICIT STATE MACHINE RENDERER ────────────────────────────────────────
 function renderScanState(rawState) {
+  const status = rawState ? (rawState.status || (rawState.verdict ? 'SUCCESS' : 'IDLE')) : 'IDLE';
+  console.log(`[PhishGuard] POPUP_RENDER: ${status}`, rawState);
+
   const verdictCard = document.getElementById('verdict-card');
   const verdictBadge = document.getElementById('verdict-badge');
   const threatLevelText = document.getElementById('threat-level-text');
@@ -272,8 +466,47 @@ function renderScanState(rawState) {
   const ensembleScoreElem = document.getElementById('ensemble-score');
   const signalsList = document.getElementById('signals-list');
 
-  const status = rawState ? (rawState.status || (rawState.verdict ? 'SUCCESS' : 'IDLE')) : 'IDLE';
-  console.log(`[PhishGuard] POPUP_RENDER: ${status}`, rawState);
+  // Presentation Demo Toolbar Sync
+  const isDemo = Boolean(rawState && (rawState.is_demo || rawState.isDemo));
+  const demoWatermark = document.getElementById('demo-watermark');
+  const demoStatusTag = document.getElementById('demo-status-tag');
+  const demoActionsRow = document.getElementById('demo-actions-row');
+  const btnL1 = document.getElementById('btn-demo-l1');
+  const btnL2 = document.getElementById('btn-demo-l2');
+  const btnL3 = document.getElementById('btn-demo-l3');
+  const btnLive = document.getElementById('btn-demo-live');
+  const statusText = document.getElementById('status-text');
+  const currentUrlElem = document.getElementById('current-url');
+
+  if (btnL1) btnL1.classList.remove('active');
+  if (btnL2) btnL2.classList.remove('active');
+  if (btnL3) btnL3.classList.remove('active');
+  if (btnLive) btnLive.classList.remove('active');
+
+  if (isDemo) {
+    if (demoWatermark) demoWatermark.style.display = 'block';
+    if (demoActionsRow) demoActionsRow.style.display = 'flex';
+    if (currentUrlElem && rawState.url) currentUrlElem.textContent = rawState.url;
+
+    const level = rawState.detection_level || (rawState.verdict === 'PHISHING' ? 3 : (rawState.verdict === 'SUSPICIOUS' ? 2 : 1));
+    if (demoStatusTag) {
+      demoStatusTag.textContent = `ACTIVE: L${level}`;
+      demoStatusTag.className = 'demo-status-tag active';
+    }
+    if (statusText) statusText.textContent = `DEMO L${level}`;
+    if (level === 1 && btnL1) btnL1.classList.add('active');
+    if (level === 2 && btnL2) btnL2.classList.add('active');
+    if (level === 3 && btnL3) btnL3.classList.add('active');
+  } else {
+    if (demoWatermark) demoWatermark.style.display = 'none';
+    if (demoActionsRow) demoActionsRow.style.display = 'none';
+    if (demoStatusTag) {
+      demoStatusTag.textContent = 'LIVE MODE';
+      demoStatusTag.className = 'demo-status-tag';
+    }
+    if (statusText && status === 'SUCCESS') statusText.textContent = 'ACTIVE DL';
+    if (btnLive) btnLive.classList.add('active');
+  }
 
   if (status !== 'SCANNING') {
     clearScanPolling();
